@@ -4,66 +4,66 @@
 [![Library](https://img.shields.io/badge/Library-React-61dafb?style=flat-square&logo=react)](https://reactjs.org/)
 [![Status](https://img.shields.io/badge/Project-PKL%20%2F%20Internship-orange?style=flat-square)]()
 
-Aplikasi *Web Dashboard* berbasis web untuk memonitoring sistem otomasi industri dan perangkat *Industrial Internet of Things* (IIoT) secara *real-time*. Projek ini dikembangkan sebagai bagian dari tugas akhir proyek Praktik Kerja Lapangan (PKL) / Magang mahasiswa Universitas.
+A web-based *Industrial Internet of Things* (IIoT) dashboard application designed to monitor industrial automation systems and connected field devices in real-time. This project was developed as part of the practical field project (PKL) / internship curriculum requirement for the university degree.
 
-## 🚀 Fitur Utama
+## 🚀 Key Features
 
-*   **Real-time Sensor Monitoring:** Visualisasi data sensor industri (seperti *Gas Sensor Analog Input* dari Cosmos KD-12B, status sistem tata udara AHU, dan *ducting*).
-*   **Interactive SVG Widgets:** Dashboard menggunakan widget berbasis *Scalable Vector Graphics* (SVG) untuk indikator status visual yang dinamis, ringan, dan tajam di berbagai resolusi layar.
-*   **Smart Alarm System:** Sistem peringatan otomatis (*Alarm Status*) yang responsif. Menggunakan logika *safety-first* di mana jika belum ada data masuk (data kosong), nilai default akan diset ke `0` untuk mencegah alarm aktif secara tidak sengaja (*false alarm*).
-*   **Localizing Interface:** Antarmuka web telah dilokalisasi penuh ke dalam Bahasa Indonesia untuk istilah teknis industri (contoh: *Sistem Pemadam Kebakaran / Fire Suppression System*).
+* **Real-time Sensor Monitoring:** Live data visualization of industrial sensors, including the Cosmos KD-12B Gas Sensor Analog Input, Air Handling Unit (AHU) statuses, and ventilation ducting metrics.
+* **Interactive SVG Widgets:** The dashboard utilizes custom *Scalable Vector Graphics* (SVG) widgets to deliver dynamic, high-resolution, and lightweight visual status indicators that scale smoothly across devices.
+* **Smart Alarm System:** A responsive telemetry alarm infrastructure. It incorporates a safety-first data handling logic: if no data is received (null/empty payload), the status defaults to `0` to prevent accidental false alarms.
+* **Localized Interface:** The system interface has been fully localized into Indonesian for on-site technical clarity (e.g., translating critical systems like *Fire Suppression System* into *Sistem Pemadam Kebakaran*).
 
-## 🛠️ Tech Stack (Teknologi yang Digunakan)
+## 🛠️ Tech Stack
 
-*   **Frontend Framework:** Next.js (React)
-*   **Routing & State Management:** Next.js App Router & React Hooks (`useState`, `useEffect`)
-*   **Styling:** Tailwind CSS / CSS Modules
-*   **Database / Backend Integration:** PostgreSQL (Supabase/Render) / Node.js API
-*   **Deployment Target:** GitHub Private & Cloud Hosting (Vercel / AWS EC2 via Git integration)
+* **Frontend Framework:** Next.js (React)
+* **Routing & State Management:** Next.js App Router & React Hooks (`useState`, `useEffect`)
+* **Styling:** Tailwind CSS / CSS Modules
+* **Database & Integration:** PostgreSQL (Supabase/Render) / Node.js API
+* **Deployment Architecture:** GitHub Private Repository paired with cloud hosting platforms (Vercel / AWS EC2 via Git workflow)
 
 ---
 
-## 💻 Cara Menjalankan Projek di Lokal (Development)
+## 💻 Local Development Setup
 
-Prasyarat: Pastikan laptop Anda sudah terinstal **Node.js** (versi 18 ke atas) dan **Git**.
+Prerequisites: Ensure **Node.js** (v18 or higher) and **Git** are installed on your machine.
 
-1.  **Clone Repositori (Private):**
-```bash
-    git clone [https://github.com/username-anda/nama-repo-dashboard.git](https://github.com/username-anda/nama-repo-dashboard.git)
-    cd nama-repo-dashboard
+1.  **Clone the Private Repository:**
+    ```bash
+    git clone [https://github.com/your-username/iiot-dashboard-repo.git](https://github.com/your-username/iiot-dashboard-repo.git)
+    cd iiot-dashboard-repo
     ```
 
-2.  **Instal Dependensi:**
-```bash
+2.  **Install Dependencies:**
+    ```bash
     npm install
     ```
 
-3.  **Konfigurasi Environment Variables:**
-    Buat file `.env.local` di root direktori dan masukkan kredensial yang dibutuhkan (jika ada):
-```env
+3.  **Configure Environment Variables:**
+    Create a `.env.local` file in the root directory and add the required API or database credentials:
+    ```env
     NEXT_PUBLIC_API_URL=http://localhost:3000/api
-    # Masukkan config database/sensor stream lainnya di sini
+    # Add external database or telemetry stream configs here
     ```
 
-4.  **Jalankan Server Lokal:**
-```bash
+4.  **Run the Development Server:**
+    ```bash
     npm run dev
     ```
-    Buka [http://localhost:3000](http://localhost:3000) di browser Anda untuk melihat aplikasi.
+    Open [http://localhost:3000](http://localhost:3000) in your browser to view the application.
 
 ---
 
-## 🗂️ Struktur Direktori Projek (Penting)
+## 🗂️ Project Directory Structure
 
 ```text
-├── .next/                  # Hasil build otomatis Next.js
-├── node_modules/           # Dependensi pihak ketiga
+├── .next/                  # Automated Next.js build outputs
+├── node_modules/           # Third-party dependencies
 ├── src/
-│   ├── app/                # Next.js App Router (Halaman Utama)
-│   │   ├── page.js         # Beranda Dashboard
-│   │   └── sensor/         # Fitur SensorDetailPage
-│   ├── components/         # Komponen Widget SVG & Alarm
-│   └── utils/              # Fungsi pembantu / konfigurasi API
-├── .gitignore              # Daftar file yang diabaikan oleh Git
-├── package.json            # Konfigurasi dependensi npm
-└── README.md               # Dokumentasi projek
+│   ├── app/                # Next.js App Router (Pages layout)
+│   │   ├── page.js         # Main Dashboard landing page
+│   │   └── sensor/         # SensorDetailPage feature module
+│   ├── components/         # Reusable SVG Widgets & Alarm UI components
+│   └── utils/              # Helper functions & API connection configurations
+├── .gitignore              # Files excluded from Git tracking
+├── package.json            # Project manifest and npm scripts
+└── README.md               # Project documentation
