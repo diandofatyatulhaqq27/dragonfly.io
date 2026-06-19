@@ -39,5 +39,10 @@
     "postcss": "latest",
     "tailwindcss": "4.0.0-alpha.1",
     "typescript": "latest"
+  },
+  "overrides": {
+    "react": "$react",
+    "react-dom": "$react-dom"
   }
 }
+
