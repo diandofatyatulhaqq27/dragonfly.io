@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Users, Building2, CheckCircle, Search, Loader2,
+  Users, Building2, CheckCircle, Search, Loader2, Eye, EyeOff,
   AlertTriangle, RefreshCcw, Trash2, Edit2, X, AlertCircle, Plus, Link2, ShieldAlert
 } from "lucide-react";
 import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
@@ -231,6 +231,44 @@ export default function MasterAdminPage() {
     return Object.values(item).some(val => String(val).toLowerCase().includes(s));
   });
 
+function InvitationCodeCell({ code }: { code: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    
+    if (isVisible) {
+      // Set timer untuk otomatis menyembunyikan kembali setelah 10 detik (10000 ms)
+      timer = setTimeout(() => {
+        setIsVisible(false);
+      }, 10000);
+    }
+
+    // Bersihkan timer jika user menutup manual sebelum 10 detik atau komponen di-unmount
+    return () => clearTimeout(timer);
+  }, [isVisible]);
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Efek blur diatur lewat class Tailwind "blur-sm" saat isVisible = false */}
+      <span className={`font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30 transition-all duration-300 ${
+        isVisible ? "blur-none" : "blur-sm select-none"
+      }`}>
+        {code}
+      </span>
+      
+      {/* Tombol Mata */}
+      <button
+        onClick={() => setIsVisible(!isVisible)}
+        className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+        title={isVisible ? "Sembunyikan" : "Tampilkan"}
+      >
+        {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+}
+
   // ========================================================
   // RENDERING
   // ========================================================
@@ -369,7 +407,7 @@ export default function MasterAdminPage() {
                         <td className="p-4 font-bold text-slate-500 dark:text-slate-400 uppercase">{item.address}</td>
                         <td className="p-4">
                           <span className="font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30">
-                            {item.invitation_code}
+                          <InvitationCodeCell code={item.invitation_code} />
                           </span>
                         </td>
                       </>

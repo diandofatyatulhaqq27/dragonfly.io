@@ -413,7 +413,7 @@ function ValueDisplay({ value, unit, color, isOnline }: { value: any; unit?: str
   return (
     <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
       <span
-        className={`text-6xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
+        className={`text-8xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
         style={{ color: isOnline ? color : undefined }}
       >
         {value ?? "—"}
@@ -438,7 +438,7 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData }: {
     <div className="flex flex-col gap-1 mt-auto">
       <div className="flex items-baseline gap-1.5">
         <span
-          className={`text-5xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
+          className={`text-8xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
           style={{ color: isOnline ? color : undefined }}
         >
           {value ?? "—"}
