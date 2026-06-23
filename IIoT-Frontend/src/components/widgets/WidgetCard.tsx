@@ -88,10 +88,15 @@ function WidgetEditForm({
   onUpdate: (i: number, f: string, v: any) => void;
   onRemove: (i: number) => void;
 }) {
-  const isChart  = item.type === "chart" || item.type === "bar";
-  const isGauge  = item.type === "gauge";
-  const isStatus = item.type === "status";
+  const isChart    = item.type === "chart" || item.type === "bar";
+  const isGauge    = item.type === "gauge";
+  const isStatus   = item.type === "status";
   const isMultiKey = item.type === "chart" && (item.keys?.length ?? 0) > 1;
+
+  // ✅ FIX 3: state lokal untuk raw input area-chart keys
+  const [rawKeys, setRawKeys] = React.useState<string>(
+    item.keys?.length ? item.keys.join(", ") : item.key
+  );
 
   const inp = "w-full mt-1 bg-slate-50 dark:bg-slate-900/60 rounded-lg px-3 py-2 text-[11px] font-medium outline-none focus:ring-2 ring-blue-200 dark:ring-blue-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 placeholder:text-slate-300 dark:placeholder:text-slate-600";
   const lbl = "text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest";
@@ -269,16 +274,15 @@ function WidgetEditForm({
             <input
               className={`${inp} font-mono text-blue-600 dark:text-blue-400`}
               placeholder="CHWS, CHWR, INVRTR"
-              // ✅ selalu tampilkan raw string, jangan join dari array
-              value={item.keys?.length ? item.keys.join(", ") : item.key}
+              // ✅ FIX 3: pakai rawKeys, bukan item.keys.join (yang reset koma)
+              value={rawKeys}
               onChange={(e) => {
                 const raw = e.target.value;
-                // ✅ jangan parse saat user masih mengetik koma atau spasi di akhir
-                if (raw.endsWith(",") || raw.endsWith(", ")) {
-                  // simpan sementara ke key sebagai raw string, tunggu user selesai ketik
-                  onUpdate(index, "key", raw);
-                  return;
-                }
+                setRawKeys(raw); // selalu update display dulu
+
+                // jangan parse kalau user masih mengetik separator
+                if (raw.endsWith(",") || raw.endsWith(", ") || raw.endsWith(" ")) return;
+
                 const arr = raw.split(",").map((s) => s.trim()).filter(Boolean);
                 if (arr.length > 1) {
                   onUpdate(index, "keys", arr);
@@ -547,6 +551,7 @@ function AreaDisplay({ data, color, item }: {
           </defs>
           <XAxis dataKey="time" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+          {/* ✅ FIX 1: hapus position={{ y: 0 }} — bikin tooltip mental ke kiri */}
           <Tooltip
             contentStyle={{
               fontSize: "10px",
@@ -558,7 +563,6 @@ function AreaDisplay({ data, color, item }: {
             }}
             formatter={(value: any, name: string) => [value, isMulti ? name : item.key]}
             labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
-            position={{ y: 0 }}
           />
           {keys.map((k, i) => (
             <Area
@@ -588,12 +592,12 @@ function BarDisplay({ data, color }: { data: { time: string; val: number }[]; co
         <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }} barCategoryGap="25%">
           <XAxis dataKey="time" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+          {/* ✅ FIX 2: hapus position={{ y: 0 }} — sama penyebabnya dengan area chart */}
           <Tooltip
             contentStyle={{ fontSize: "10px", fontWeight: 700, borderRadius: "10px", border: "1px solid #e2e8f0", padding: "4px 8px", backgroundColor: "#fff" }}
             formatter={(value: any) => [value, "val"]}
             labelStyle={{ color: "#94a3b8", marginBottom: 2 }}
             cursor={{ fill: `${color}15` }}
-            position={{ y: 0 }}
           />
           <Bar dataKey="val" fill={color} radius={[3, 3, 0, 0]} />
         </BarChart>
