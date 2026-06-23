@@ -502,10 +502,11 @@ function AreaDisplay({ data, color, item }: {
   color: string;
   item: WidgetItem;
 }) {
-  const keys = item.keys?.length ? item.keys : [item.key];
+  const keys    = item.keys?.length ? item.keys : [item.key];
+  const isMulti = keys.length > 1;
 
   const getColor = (i: number) => {
-    if (keys.length === 1) return color;
+    if (!isMulti) return color;
     return item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length];
   };
 
@@ -524,17 +525,28 @@ function AreaDisplay({ data, color, item }: {
           <XAxis dataKey="time" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
           <Tooltip
-            contentStyle={{ fontSize: "10px", fontWeight: 700, borderRadius: "10px", border: "1px solid #e2e8f0", padding: "4px 8px" }}
+            contentStyle={{
+              fontSize: "10px",
+              fontWeight: 700,
+              borderRadius: "10px",
+              border: "1px solid #e2e8f0",
+              padding: "6px 10px",
+              backgroundColor: "#fff",
+            }}
+            formatter={(value: any, name: string) => [value, name]}
+            labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
           />
           {keys.map((k, i) => (
             <Area
               key={k}
               type="monotone"
-              dataKey={k}
+              dataKey={isMulti ? k : "val"}
+              name={k}
               stroke={getColor(i)}
               strokeWidth={2}
               fill={`url(#grad-${k}-${i})`}
               dot={false}
+              activeDot={{ r: 4 }}
             />
           ))}
         </AreaChart>
@@ -545,6 +557,7 @@ function AreaDisplay({ data, color, item }: {
 
 // ─── BAR CHART ───────────────────────────────────────────────────────────────
 
+// Revert BarDisplay — single key seperti sebelumnya
 function BarDisplay({ data, color }: { data: { time: string; val: number }[]; color: string }) {
   return (
     <div className="h-36 w-full mt-2">
