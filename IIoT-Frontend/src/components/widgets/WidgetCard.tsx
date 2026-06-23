@@ -386,7 +386,7 @@ function WidgetDisplay({
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? "animate-pulse" : ""}`}
             style={{ backgroundColor: isOnline ? "#10b981" : "#f87171" }}
           />
-          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">
+          <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">
             {item.label || "SENSOR"}
           </span>
         </div>
@@ -411,15 +411,15 @@ function WidgetDisplay({
 
 function ValueDisplay({ value, unit, color, isOnline }: { value: any; unit?: string; color: string; isOnline: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-1">
+    <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
       <span
-        className={`text-5xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
+        className={`text-6xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
         style={{ color: isOnline ? color : undefined }}
       >
         {value ?? "—"}
       </span>
       {unit && (
-        <span className="text-xs font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>
+        <span className="text-sm font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>
       )}
     </div>
   );
@@ -438,12 +438,12 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData }: {
     <div className="flex flex-col gap-1 mt-auto">
       <div className="flex items-baseline gap-1.5">
         <span
-          className={`text-4xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
+          className={`text-5xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
           style={{ color: isOnline ? color : undefined }}
         >
           {value ?? "—"}
         </span>
-        {unit && <span className="text-xs font-black text-slate-400">{unit}</span>}
+        {unit && <span className="text-sm font-black text-slate-400">{unit}</span>}
         {delta !== null && Math.abs(delta) >= 0.05 && (
           <span className={`text-[10px] font-black ml-1 ${delta > 0 ? "text-rose-500" : "text-emerald-500"}`}>
             {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}
@@ -488,13 +488,13 @@ function GaugeDisplay({ value, unit, color, min, max }: {
 
   return (
     <div className="flex flex-col items-center mt-1">
-      <svg width="110" height="80" viewBox="0 0 110 80">
+      <svg width="140" height="100" viewBox="0 0 110 80">
         <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" className="dark:stroke-slate-700" />
         {fillPath && <path d={fillPath} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" />}
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="16" fontWeight="900" fill={color}>{value ?? "—"}</text>
-        {unit && <text x={cx} y={cy + 24} textAnchor="middle" fontSize="8" fontWeight="700" fill="#94a3b8">{unit}</text>}
-        <text x="10" y="76" fontSize="7" fontWeight="700" fill="#cbd5e1">{min}</text>
-        <text x="92" y="76" fontSize="7" fontWeight="700" fill="#cbd5e1" textAnchor="end">{max}</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="20" fontWeight="900" fill={color}>{value ?? "—"}</text>
+        {unit && <text x={cx} y={cy + 26} textAnchor="middle" fontSize="10" fontWeight="700" fill="#94a3b8">{unit}</text>}
+        <text x="10" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1">{min}</text>
+        <text x="92" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1" textAnchor="end">{max}</text>
       </svg>
     </div>
   );
@@ -515,7 +515,7 @@ function StatusDisplay({ value, label, color, onValue, isOnline }: {
       >
         <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-9" : "left-1"}`} />
       </div>
-      <span className="text-sm font-black uppercase tracking-widest" style={{ color: on ? color : "#94a3b8" }}>
+      <span className="text-base font-black uppercase tracking-widest" style={{ color: on ? color : "#94a3b8" }}>
         {on ? "ON" : "OFF"}
       </span>
     </div>
