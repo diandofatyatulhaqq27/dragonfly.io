@@ -1,12 +1,13 @@
 "use client";
+
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Calendar, Download, RefreshCcw,
-  Loader2, ChevronLeft, ChevronRight, AlertTriangle, Filter, SlidersHorizontal, Cpu
+  Loader2, ChevronLeft, ChevronRight, AlertTriangle, Filter, SlidersHorizontal, Cpu, Clock
 } from "lucide-react";
 import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 
-export default function HistoricalAnalyticsPage() {
+export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar selaras dengan modul datalogger
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [gatewaysList, setGatewaysList] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
@@ -21,7 +22,7 @@ export default function HistoricalAnalyticsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 25;
 
-  // ─── 1. FETCH MASTER DATA (projects + semua gateway) ─────────────────────
+  // ─── 1. FETCH MASTER DATA (Projects + Gateways) ─────────────────────
   const fetchProjects = useCallback(async () => {
     try {
       const currentUser = getLocalUser();
@@ -50,7 +51,7 @@ export default function HistoricalAnalyticsPage() {
         setGatewaysList(r.data ?? []);
       }
     } catch (err) {
-      console.error("Gagal memuat master data:", err);
+      console.error("Gagal memuat master data data logger:", err);
     }
   }, []);
 
@@ -130,12 +131,14 @@ export default function HistoricalAnalyticsPage() {
     const gwLabel = selectedGateway ? gatewayName(Number(selectedGateway)) : "SEMUA_GATEWAY";
 
     let csv = "data:text/csv;charset=utf-8,";
-    csv += `AUDIT REPORT TELEMETRI DATA: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
-    csv += ["No", "Gateway", ...dynamicChannels].join(",") + "\n";
+    csv += `AUDIT REPORT TELEMETRI DATA LOGGER: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
+    csv += ["No", "Timestamp", "Gateway", ...dynamicChannels].join(",") + "\n"; // Tambah Timestamp di CSV
 
     logs.forEach((log, i) => {
+      const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
       const row = [
         i + 1,
+        `"${formattedTime}"`,
         gatewayName(log.gateway_id),
         ...dynamicChannels.map((ch) => {
           const val = log.payload?.[ch];
@@ -147,7 +150,7 @@ export default function HistoricalAnalyticsPage() {
 
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csv));
-    link.setAttribute("download", `HISTORIS_LOG_PROJECT_${selectedProject}${selectedGateway ? `_GW${selectedGateway}` : ""}.csv`);
+    link.setAttribute("download", `DATA_LOGGER_PROJECT_${selectedProject}${selectedGateway ? `_GW${selectedGateway}` : ""}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -244,7 +247,7 @@ export default function HistoricalAnalyticsPage() {
         {/* ── TABLE INFO BAR ── */}
         <div className="px-4 py-2.5 border-b border-slate-50 dark:border-slate-700 flex items-center justify-between">
           <span className="font-black text-[9px] uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-            <SlidersHorizontal className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Dynamic Channel Transmissions
+            <SlidersHorizontal className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Data Logger Channel Transmissions
           </span>
           <span className="text-[9px] font-mono font-black uppercase text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-900/50">
             Total Records: {logs.length} Rows
@@ -257,6 +260,7 @@ export default function HistoricalAnalyticsPage() {
             <thead>
               <tr className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-700">
                 <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-14 text-center">Index</th>
+                <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-36"><div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Timestamp</div></th> {/* Tambah Kolom Waktu */}
                 <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-40">Gateway</th>
                 {dynamicChannels.map((ch) => (
                   <th key={ch} className="p-4 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60 bg-blue-50/20 dark:bg-blue-950/10">
@@ -268,14 +272,14 @@ export default function HistoricalAnalyticsPage() {
             <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40 text-[11px] font-mono text-slate-600 dark:text-slate-400">
               {isLoading ? (
                 <tr>
-                  <td colSpan={2 + dynamicChannels.length} className="p-28 text-center font-sans">
+                  <td colSpan={3 + dynamicChannels.length} className="p-28 text-center font-sans">
                     <Loader2 className="w-7 h-7 animate-spin text-blue-600 dark:text-blue-400 mx-auto" />
                     <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-3">Re-indexing telemetry records dari PostgreSQL...</p>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={2 + dynamicChannels.length} className="p-16 text-center font-sans">
+                  <td colSpan={3 + dynamicChannels.length} className="p-16 text-center font-sans">
                     <AlertTriangle className="w-4 h-4 text-rose-400 mx-auto mb-2" />
                     <p className="text-rose-500 dark:text-rose-400 font-bold text-[11px] uppercase italic">{error}</p>
                   </td>
@@ -284,6 +288,12 @@ export default function HistoricalAnalyticsPage() {
                 currentLogsChunk.map((log, index) => (
                   <tr key={log.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
                     <td className="p-4 text-center text-slate-400 dark:text-slate-600 font-bold">{indexOfFirstRecord + index + 1}</td>
+                    
+                    {/* Mengisi Kolom Timestamp secara Rapi */}
+                    <td className="p-4 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">
+                      {log.created_at ? new Date(log.created_at).toLocaleString("id-ID") : "—"}
+                    </td>
+
                     <td className="p-4 font-sans text-slate-800 dark:text-slate-300 font-black uppercase tracking-tight text-[10px]">
                       {gatewayName(log.gateway_id)}
                     </td>
@@ -301,7 +311,7 @@ export default function HistoricalAnalyticsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={2 + dynamicChannels.length} className="p-20 text-center text-slate-400 dark:text-slate-500 font-sans text-[9px] font-black uppercase italic tracking-[0.2em]">
+                  <td colSpan={3 + dynamicChannels.length} className="p-20 text-center text-slate-400 dark:text-slate-500 font-sans text-[9px] font-black uppercase italic tracking-[0.2em]">
                     No historical logs found within this date parameters
                   </td>
                 </tr>

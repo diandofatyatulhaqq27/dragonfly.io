@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState } from 'react';
-import { LogIn, ShieldCheck, Mail, Lock } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation"; // 1. Import useRouter dari next/navigation
+import { useRouter } from "next/navigation";
+import Image from "next/image"; // Import Image dari Next.js
+import myLogo from '@/assets/logodragonfly2.png'; // Import aset gambar logo yang sama
 
 export default function LoginPage() {
-  const router = useRouter(); // 2. Inisialisasi router
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,8 +20,8 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // 1. Tembak langsung endpoint login FastAPI di port 8000
-      const response = await fetch("http://localhost:8000/api/auth/login", {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -32,7 +34,6 @@ export default function LoginPage() {
 
       const result = await response.json();
 
-      // 2. Jika FastAPI mengembalikan status gagal/eror (HTTP Status 4xx / 5xx)
       if (!response.ok) {
         if (response.status === 403) {
           setError("Akun Anda belum disetujui Admin.");
@@ -42,20 +43,16 @@ export default function LoginPage() {
           setError(result.detail || "Gagal masuk ke sistem.");
         }
         setIsLoading(false);
-        return; // STOP DI SINI. Jangan izinkan masuk ke dashboard jika gagal
+        return;
       }
 
-      // 3. Jika login sukses (HTTP status 200 OK)
-      // Menyimpan data user/token yang dikirim dari backend
       const userData = result.user ? result.user : result;
       localStorage.setItem("iiot_user", JSON.stringify(userData));
       
-      // Jika backend mengirimkan token terpisah, simpan juga di sini (opsional)
       if (result.access_token) {
         localStorage.setItem("iiot_token", result.access_token);
       }
       
-      // Alihkan halaman ke dashboard secara bersih dan refresh state router
       router.push("/dashboard");
       router.refresh();
 
@@ -67,13 +64,31 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-xl p-8">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4">
-            <ShieldCheck className="w-10 h-10" />
+      <div className="w-full max-w-[360px] bg-white rounded-xl border border-slate-200 shadow-xl p-6">
+          
+        {/* BRANDING LOGO SECTION */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="relative w-12 h-11 rounded-lg overflow-hidden shrink-0 mb-3">
+            <Image 
+              src={myLogo} 
+              alt="Logo" 
+              fill 
+              className="object-cover" 
+              priority 
+            />
           </div>
-          <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">IIoT Login</h1>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Sistem Monitoring PKL</p>
+          
+          <span 
+            className="text-2xl tracking-[0.05em] text-slate-900 dark:text-slate-900 leading-none antialiased"
+            style={{ fontFamily: '"Arial Black", "Impact", sans-serif', fontWeight: 900 }}
+          >
+            Dragonfly<span className="text-zinc-400">.</span>
+            <span className="text-blue-600">io</span>
+          </span>
+          
+          <p className="text-[9px] font-black tracking-[0.2em] text-slate-400 mt-2">
+            Your Monitoring Platform Solution 
+          </p>
         </div>
 
         {error && (
@@ -92,7 +107,7 @@ export default function LoginPage() {
                 required
                 type="email" 
                 className="w-full p-4 pl-12 bg-slate-50 border-none rounded-2xl text-sm outline-none focus:ring-2 ring-blue-100 text-slate-800 font-sans"
-                placeholder="nama@email.com"
+                placeholder="name@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -112,21 +127,33 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            
+            {/* LINK FORGOT PASSWORD */}
+            <div className="flex justify-end mt-2">
+              <Link 
+                href="/reset-password" 
+                className="text-[13px] font-black text-blue-600 hover:underline tracking-widest"
+              >
+                Forgot Password?
+              </Link>
+            </div>
           </div>
 
           <button 
             disabled={isLoading}
-            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
           >
-            <LogIn className="w-4 h-4" />
-            {isLoading ? "Memproses..." : "Masuk ke Dashboard"}
+            {isLoading ? "Memproses..." : "Login"}
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-          <Link href="/register" className="text-[10px] font-black text-blue-600 hover:underline uppercase tracking-widest">
-            Daftar Akun Baru
-          </Link>
+         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center mt-6">
+            <p className="text-sm text-gray-500">
+              Don't have an account?{" "}
+            <Link href="/register" className="text-[15px] font-black text-blue-600 hover:underline tracking-widest">
+               Sign Up
+            </Link>
+          </p>
         </div>
       </div>
     </div>

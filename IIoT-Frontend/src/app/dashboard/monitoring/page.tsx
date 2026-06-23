@@ -1,379 +1,455 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Activity,
-  AlertTriangle,
-  Wifi,
-  WifiOff,
-  Loader2,
-  RefreshCcw,
-  Building2,
-  Cpu,
-  Flame,
-  CheckCircle2,
-  XCircle,
-  BellRing,
-  ShieldAlert,
+  AlertTriangle, Wifi, WifiOff, Loader2,
+  Building2, Cpu, BellRing, ShieldAlert,
 } from "lucide-react";
-
-const API_BASE = "http://localhost:8000/api";
-
-function getLocalUser(): any | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("iiot_user");
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("iiot_token") : "";
-  const user = getLocalUser();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-User-Id": String(user?.id ?? ""),
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-}
+import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
+import {
+  AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 function timeAgo(dateStr?: string | null): string {
-  if (!dateStr) return "Belum pernah";
-  const date = new Date(dateStr);
-  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 5) return "Baru saja";
-  if (diffSec < 60) return `${diffSec} detik lalu`;
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} menit lalu`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} jam lalu`;
-  return `${Math.floor(diffSec / 86400)} hari lalu`;
+  if (!dateStr) return "Never";
+  const diffSec = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diffSec < 5) return "Just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+type Period = "hourly" | "daily" | "monthly" | "annually";
+
+// ✅ Fix: pakai triggered_at (field dari AlarmHistory)
+function buildChartData(alarms: any[], period: Period) {
+  const now = Date.now();
+
+  if (period === "hourly") {
+    return Array.from({ length: 60 }, (_, i) => {
+      const slotStart = now - (59 - i) * 60_000;
+      const slotEnd   = slotStart + 60_000;
+      const count = alarms.filter((a) => {
+        const t = new Date(a.triggered_at ?? 0).getTime();
+        return t >= slotStart && t < slotEnd;
+      }).length;
+      const d = new Date(slotStart);
+      // ✅ semua bucket punya label, bukan "" — fix tooltip bug
+      const label = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+      return { label, alarms: count };
+    });
+  }
+
+  if (period === "daily") {
+    return Array.from({ length: 24 }, (_, i) => {
+      const slotStart = now - (23 - i) * 3_600_000;
+      const slotEnd   = slotStart + 3_600_000;
+      const count = alarms.filter((a) => {
+        const t = new Date(a.triggered_at ?? 0).getTime();
+        return t >= slotStart && t < slotEnd;
+      }).length;
+      const h = new Date(slotStart).getHours();
+      return { label: `${h.toString().padStart(2, "0")}:00`, alarms: count };
+    });
+  }
+
+  if (period === "monthly") {
+    return Array.from({ length: 30 }, (_, i) => {
+      const slotStart = now - (29 - i) * 86_400_000;
+      const slotEnd   = slotStart + 86_400_000;
+      const count = alarms.filter((a) => {
+        const t = new Date(a.triggered_at ?? 0).getTime();
+        return t >= slotStart && t < slotEnd;
+      }).length;
+      const d = new Date(slotStart);
+      return { label: String(d.getDate()), alarms: count };
+    });
+  }
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (11 - i));
+    const y = d.getFullYear(), m = d.getMonth();
+    const slotStart = new Date(y, m, 1).getTime();
+    const slotEnd   = new Date(y, m + 1, 1).getTime();
+    const count = alarms.filter((a) => {
+      const t = new Date(a.triggered_at ?? 0).getTime();
+      return t >= slotStart && t < slotEnd;
+    }).length;
+    return { label: MONTHS[m], alarms: count };
+  });
+}
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 shadow-xl text-xs">
+      <p className="text-gray-400 mb-0.5">{label}</p>
+      <p className="text-blue-400 font-semibold">{payload[0].value} alarms</p>
+    </div>
+  );
+}
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  valueColor?: string;
+  loading?: boolean;
+  pulse?: boolean;
+}
+
+function StatCard({ title, value, subtitle, icon, iconBg, valueColor, loading, pulse }: StatCardProps) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-500 dark:text-gray-400">{title}</p>
+          {loading ? (
+            <div className="mt-2 h-7 w-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+          ) : (
+            <p className={`text-2xl font-bold mt-1 ${valueColor ?? "text-gray-900 dark:text-gray-100"} ${pulse ? "animate-pulse" : ""}`}>
+              {value}
+            </p>
+          )}
+          {subtitle && !loading && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{subtitle}</p>
+          )}
+        </div>
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function MonitoringPage() {
-  const [gateways, setGateways] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [alarms, setAlarms] = useState<any[]>([]);
-  const [devices, setDevices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [gateways, setGateways]         = useState<any[]>([]);
+  const [projects, setProjects]         = useState<any[]>([]);
+  const [companies, setCompanies]       = useState<any[]>([]);
+  const [alarms, setAlarms]             = useState<any[]>([]);
+  const [alarmHistory, setAlarmHistory] = useState<any[]>([]); // ✅ tambah state history
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [lastSync, setLastSync]         = useState<Date | null>(null);
+  const [chartPeriod, setChartPeriod]   = useState<Period>("daily");
 
-  const loggedInUser = getLocalUser();
-  const userRole: string = loggedInUser?.role ?? "client_user";
-  const userCompanyId: string = String(loggedInUser?.company_id ?? "");
+  const loggedInUser    = getLocalUser();
+  const userRole        = loggedInUser?.role ?? "client_user";
+  const userCompanyId   = String(loggedInUser?.company_id ?? "");
   const isCompanyScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole);
 
-  // ─── FETCH ALL OVERVIEW DATA ────────────────────────────────────────────
+  // ✅ fetchOverview: tambah fetch alarms/history
   const fetchOverview = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
-
       const headers = getAuthHeaders();
 
-      const gwUrl = isCompanyScoped && userCompanyId
+      const gwUrl   = isCompanyScoped && userCompanyId
         ? `${API_BASE}/gateways/?company_id=${userCompanyId}`
         : `${API_BASE}/gateways/`;
-
       const projUrl = isCompanyScoped && userCompanyId
         ? `${API_BASE}/projects/?company_id=${userCompanyId}`
         : `${API_BASE}/projects/`;
 
-      const devUrl = isCompanyScoped && userCompanyId
-        ? `${API_BASE}/devices/?company_id=${userCompanyId}`
-        : `${API_BASE}/devices/?company_id=${loggedInUser?.company_id ?? 0}`;
-
-      const [resGw, resProj, resComp, resAlarm, resDev] = await Promise.allSettled([
-        fetch(gwUrl, { headers, cache: "no-store" }),
-        fetch(projUrl, { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/companies/`, { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/alarms/`, { headers, cache: "no-store" }),
-        fetch(devUrl, { headers, cache: "no-store" }),
+      const [resGw, resProj, resComp, resAlarm, resHistory] = await Promise.allSettled([
+        fetch(gwUrl,                          { headers, cache: "no-store" }),
+        fetch(projUrl,                        { headers, cache: "no-store" }),
+        fetch(`${API_BASE}/companies/`,       { headers, cache: "no-store" }),
+        fetch(`${API_BASE}/alarms/`,          { headers, cache: "no-store" }),
+        fetch(`${API_BASE}/alarms/history`,   { headers, cache: "no-store" }), // ✅ baru
       ]);
 
-      if (resGw.status === "fulfilled" && resGw.value.ok) {
-        const r = await resGw.value.json();
-        setGateways(r.data ?? []);
-      } else {
-        setGateways([]);
-      }
+      if (resGw.status    === "fulfilled" && resGw.value.ok)
+        setGateways((await resGw.value.json()).data ?? []);
+      else setGateways([]);
 
-      if (resProj.status === "fulfilled" && resProj.value.ok) {
-        const r = await resProj.value.json();
-        setProjects(r.data ?? []);
-      }
+      if (resProj.status  === "fulfilled" && resProj.value.ok)
+        setProjects((await resProj.value.json()).data ?? []);
 
-      if (resComp.status === "fulfilled" && resComp.value.ok) {
-        const r = await resComp.value.json();
-        setCompanies(r.data ?? []);
-      }
+      if (resComp.status  === "fulfilled" && resComp.value.ok)
+        setCompanies((await resComp.value.json()).data ?? []);
 
-      if (resAlarm.status === "fulfilled" && resAlarm.value.ok) {
-        const r = await resAlarm.value.json();
-        setAlarms(r.data ?? []);
-      } else {
-        setAlarms([]);
-      }
+      if (resAlarm.status === "fulfilled" && resAlarm.value.ok)
+        setAlarms((await resAlarm.value.json()).data ?? []);
+      else setAlarms([]);
 
-      if (resDev.status === "fulfilled" && resDev.value.ok) {
-        const r = await resDev.value.json();
-        setDevices(r.data ?? []);
-      } else {
-        setDevices([]);
-      }
+      // ✅ set alarm history untuk chart
+      if (resHistory.status === "fulfilled" && resHistory.value.ok)
+        setAlarmHistory((await resHistory.value.json()).data ?? []);
+      else setAlarmHistory([]);
 
       setLastSync(new Date());
     } catch (err: any) {
-      console.error("fetchOverview error:", err);
-      setError(err.message ?? "Gagal memuat data monitoring.");
+      setError(err.message ?? "Failed to load monitoring data.");
     } finally {
       setLoading(false);
     }
-  }, [isCompanyScoped, userCompanyId, loggedInUser?.company_id]);
+  }, [isCompanyScoped, userCompanyId]);
 
   useEffect(() => {
     fetchOverview();
-    const interval = setInterval(fetchOverview, 15000); 
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchOverview();
+    }, 5000);
     return () => clearInterval(interval);
   }, [fetchOverview]);
 
-  // ─── METRICS ─────────────────────────────────────────────────────────────
-  const totalGateways = gateways.length;
-  const onlineGateways = gateways.filter((g) => g.status === "online").length;
+  const totalGateways   = gateways.length;
+  const onlineGateways  = gateways.filter((g) => g.status === "online").length;
   const offlineGateways = totalGateways - onlineGateways;
+  const activeAlarms    = alarms.filter((a) => a.status === "ACTIVE");
+  const criticalAlarms  = activeAlarms.filter((a) => a.severity === "CRITICAL");
+  const uptimePct       = totalGateways > 0 ? Math.round((onlineGateways / totalGateways) * 100) : 0;
 
-  const activeAlarms = alarms.filter((a) => a.status === "ACTIVE");
-  const criticalAlarms = activeAlarms.filter((a) => a.severity === "CRITICAL");
-  const warningAlarms = activeAlarms.filter((a) => a.severity !== "CRITICAL");
+  const projectName = (id: any) =>
+    projects.find((p) => p.project_id === id)?.display_name ?? `Project #${id ?? "—"}`;
+  const companyName = (id: any) =>
+    companies.find((c) => c.id === id)?.name ?? `Tenant #${id ?? "—"}`;
 
-  const totalDevices = devices.length;
-  const onlineDevices = devices.filter((d) => d.status === "online" || d.status === "active").length;
-  const offlineDevices = totalDevices - onlineDevices;
+  // ✅ chart pakai alarmHistory bukan alarms
+  const chartData = buildChartData(alarmHistory, chartPeriod);
 
-  // ─── HELPERS ────────────────────────────────────────────────────────────
-  const projectName = (projectId: any) =>
-    projects.find((p) => p.project_id === projectId)?.display_name ?? `Project #${projectId ?? "—"}`;
-
-  const companyName = (companyId: any) =>
-    companies.find((c) => c.id === companyId)?.name ?? `Tenant #${companyId ?? "—"}`;
-
-  const gatewayName = (gatewayId: any) =>
-    gateways.find((g) => g.gateway_id === gatewayId)?.name ?? `Gateway #${gatewayId ?? "—"}`;
-
-  const deviceName = (deviceId: any) => {
-    const d = devices.find((dv) => dv.device_id === deviceId);
-    return d ? d.name : `Device #${deviceId ?? "—"}`;
+  const periodLabel: Record<Period, string> = {
+    hourly:   "Last 1 hour · per minute",
+    daily:    "Last 24 hours · per hour",
+    monthly:  "Last 30 days · per day",
+    annually: "Last 12 months · per month",
   };
 
-  // ─── RENDER ─────────────────────────────────────────────────────────────
   return (
-    <div className="p-8 space-y-8 bg-transparent min-h-screen font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="p-6 space-y-6 min-h-screen bg-gray-50 dark:bg-gray-950">
+
+      <div className="flex items-center justify-end gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-blue-400 animate-pulse" : "bg-emerald-500"}`} />
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+          {lastSync ? `Updated ${timeAgo(lastSync.toISOString())}` : "Connecting…"}
+        </span>
+      </div>
 
       {error && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-2xl flex items-center gap-3">
-          <AlertTriangle className="w-4 h-4" /> {error}
+        <div className="flex items-center gap-2.5 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
         </div>
       )}
 
-      {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-        {/* Gateways Online */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
-            <Wifi className="w-6 h-6 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Gateway Online</p>
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-slate-300 mt-1" />
-            ) : (
-              <p className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                {onlineGateways}<span className="text-sm text-slate-400 font-bold"> / {totalGateways}</span>
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Gateways Offline */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${offlineGateways > 0 ? "bg-rose-50 dark:bg-rose-950/30" : "bg-slate-50 dark:bg-slate-900/40"}`}>
-            <WifiOff className={`w-6 h-6 ${offlineGateways > 0 ? "text-rose-500" : "text-slate-300 dark:text-slate-600"}`} />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Gateway Offline</p>
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-slate-300 mt-1" />
-            ) : (
-              <p className={`text-2xl font-black tracking-tight ${offlineGateways > 0 ? "text-rose-500" : "text-slate-800 dark:text-slate-100"}`}>
-                {offlineGateways}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Active Critical Alarms */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${criticalAlarms.length > 0 ? "bg-rose-50 dark:bg-rose-950/30" : "bg-slate-50 dark:bg-slate-900/40"}`}>
-            <ShieldAlert className={`w-6 h-6 ${criticalAlarms.length > 0 ? "text-rose-500 animate-pulse" : "text-slate-300 dark:text-slate-600"}`} />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Alarm Kritis Aktif</p>
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-slate-300 mt-1" />
-            ) : (
-              <p className={`text-2xl font-black tracking-tight ${criticalAlarms.length > 0 ? "text-rose-500" : "text-slate-800 dark:text-slate-100"}`}>
-                {criticalAlarms.length}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Total Active Alarms */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-6 shadow-sm flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${warningAlarms.length > 0 ? "bg-amber-50 dark:bg-amber-950/30" : "bg-slate-50 dark:bg-slate-900/40"}`}>
-            <BellRing className={`w-6 h-6 ${warningAlarms.length > 0 ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}`} />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Alarm Lainnya Aktif</p>
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-slate-300 mt-1" />
-            ) : (
-              <p className={`text-2xl font-black tracking-tight ${warningAlarms.length > 0 ? "text-amber-500" : "text-slate-800 dark:text-slate-100"}`}>
-                {warningAlarms.length}
-              </p>
-            )}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <StatCard
+          title="Online Gateways"
+          value={`${onlineGateways} / ${totalGateways}`}
+          subtitle={`${uptimePct}% uptime`}
+          icon={<Wifi className="w-5 h-5 text-emerald-600" />}
+          iconBg="bg-emerald-50 dark:bg-emerald-950/40"
+          valueColor="text-emerald-600 dark:text-emerald-400"
+          loading={loading}
+        />
+        <StatCard
+          title="Offline Gateways"
+          value={offlineGateways}
+          subtitle={offlineGateways > 0 ? "Requires attention" : "All systems up"}
+          icon={<WifiOff className={`w-5 h-5 ${offlineGateways > 0 ? "text-rose-500" : "text-gray-400"}`} />}
+          iconBg={offlineGateways > 0 ? "bg-rose-50 dark:bg-rose-950/40" : "bg-gray-50 dark:bg-gray-800"}
+          valueColor={offlineGateways > 0 ? "text-rose-600 dark:text-rose-400" : undefined}
+          loading={loading}
+        />
+        <StatCard
+          title="Active Alarms"
+          value={activeAlarms.length}
+          subtitle={activeAlarms.length > 0 ? "Immediate action needed" : "All clear"}
+          icon={<BellRing className={`w-5 h-5 ${activeAlarms.length > 0 ? "text-rose-500" : "text-gray-400"}`} />}
+          iconBg={activeAlarms.length > 0 ? "bg-rose-50 dark:bg-rose-950/40" : "bg-gray-50 dark:bg-gray-800"}
+          valueColor={activeAlarms.length > 0 ? "text-rose-600 dark:text-rose-400" : undefined}
+          loading={loading}
+          pulse={activeAlarms.length > 0}
+        />
       </div>
 
-      {/* GATEWAY CONNECTIVITY LIST */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-50 dark:border-slate-700 flex items-center justify-between">
-          <h2 className="font-black text-xs uppercase tracking-widest text-slate-800 dark:text-slate-100 italic flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-blue-500" /> Gateway Link Status
-          </h2>
-          <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">
-            {totalGateways} Unit
-          </span>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Alarm Activity</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{periodLabel[chartPeriod]}</p>
+          </div>
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg">
+            {(["hourly", "daily", "monthly", "annually"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setChartPeriod(p)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize cursor-pointer ${
+                  chartPeriod === p
+                    ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+                    : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                }`}
+              >
+                {p === "hourly" ? "Hourly" : p === "daily" ? "Daily" : p === "monthly" ? "Monthly" : "Annually"}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="divide-y divide-slate-50 dark:divide-slate-700/40 max-h-[420px] overflow-y-auto">
+        <div className="px-2 py-4" style={{ height: 220 }}>
           {loading ? (
-            <div className="p-16 flex flex-col items-center gap-2">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-            </div>
-          ) : gateways.length === 0 ? (
-            <div className="p-16 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 italic">
-              Belum ada gateway terdaftar
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
             </div>
           ) : (
-            gateways
-              .slice()
-              .sort((a, b) => {
-                if (a.status === b.status) return 0;
-                return a.status === "offline" ? -1 : 1;
-              })
-              .map((gw) => (
-                <div key={gw.gateway_id} className="p-5 flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${gw.status === "online" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase truncate">
-                      {gw.name}
-                    </p>
-                    <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 truncate flex items-center gap-1 mt-0.5">
-                      <Building2 className="w-3 h-3" /> {projectName(gw.project_id)}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md border ${gw.status === "online" ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40" : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40"}`}>
-                      {gw.status}
-                    </span>
-                    <p className="text-[9px] font-mono text-slate-400 dark:text-slate-500 mt-1">
-                      {timeAgo(gw.last_ping)}
-                    </p>
-                  </div>
-                </div>
-              ))
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#6366f1" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0}    />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={
+                    chartPeriod === "hourly"   ? 9  :
+                    chartPeriod === "monthly"  ? 4  : 0
+                  }
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: "#6366f1", strokeWidth: 1, strokeDasharray: "4 4" }} />
+                <Area
+                  type="monotone"
+                  dataKey="alarms"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  fill="url(#areaGrad)"
+                  dot={false}
+                  activeDot={{ r: 4, fill: "#6366f1" }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           )}
         </div>
       </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-      {/* PROJECT/SITE SUMMARY */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-50 dark:border-slate-700 flex items-center justify-between">
-          <h2 className="font-black text-xs uppercase tracking-widest text-slate-800 dark:text-slate-100 italic flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-blue-500" /> Site Project Summary
-          </h2>
-          <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">
-            {projects.length} Site
-          </span>
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-gray-400" />
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Gateway Status</h2>
+            </div>
+            <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 rounded-full">
+              {totalGateways} total
+            </span>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[420px] overflow-y-auto">
+            {loading ? (
+              <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+            ) : gateways.length === 0 ? (
+              <div className="py-16 text-center text-sm text-gray-400">No gateways registered</div>
+            ) : (
+              gateways
+                .slice()
+                .sort((a, b) => (a.status === b.status ? 0 : a.status === "offline" ? -1 : 1))
+                .map((gw) => (
+                  <div key={gw.gateway_id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${gw.status === "online" ? "bg-emerald-500 shadow-[0_0_6px_#10b981]" : "bg-rose-400"}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{gw.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1 mt-0.5 truncate">
+                        <Building2 className="w-3 h-3 shrink-0" />
+                        {projectName(gw.project_id)}
+                      </p>
+                    </div>
+                    {gw.hmi_code && (
+                      <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded-md shrink-0">
+                        {gw.hmi_code}
+                      </span>
+                    )}
+                    <div className="text-right shrink-0">
+                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                        gw.status === "online"
+                          ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
+                          : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400"
+                      }`}>
+                        {gw.status}
+                      </span>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono">{timeAgo(gw.last_ping)}</p>
+                    </div>
+                  </div>
+                ))
+            )}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-700">
-                <th className="p-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Site</th>
-                <th className="p-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Tenant</th>
-                <th className="p-4 text-center text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Gateways</th>
-                <th className="p-4 text-center text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Online</th>
-                <th className="p-4 text-center text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Alarm Aktif</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="p-12 text-center">
-                    <Loader2 className="w-6 h-6 animate-spin text-blue-500 mx-auto" />
-                  </td>
-                </tr>
-              ) : projects.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-12 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 italic">
-                    Belum ada project site terdaftar
-                  </td>
-                </tr>
-              ) : (
-                projects.map((proj) => {
-                  const projGateways = gateways.filter((g) => g.project_id === proj.project_id);
-                  const projOnline = projGateways.filter((g) => g.status === "online").length;
-                  const projDeviceIds = devices.filter((d) => projGateways.some((g) => g.gateway_id === d.gateway_id)).map((d) => d.device_id);
-                  const projAlarms = activeAlarms.filter((a) => projDeviceIds.includes(a.device_id));
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Site Summary</h2>
+            </div>
+            <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 rounded-full">
+              {projects.length} sites
+            </span>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800 max-h-[420px] overflow-y-auto">
+            {loading ? (
+              <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+            ) : projects.length === 0 ? (
+              <div className="py-16 text-center text-sm text-gray-400">No projects registered</div>
+            ) : (
+              projects.map((proj) => {
+                const projGateways = gateways.filter((g) => g.project_id === proj.project_id);
+                const projOnline   = projGateways.filter((g) => g.status === "online").length;
+                const projAlarms   = activeAlarms.filter((a) =>
+                  projGateways.some((g) => g.gateway_id === a.gateway_id)
+                );
+                const allOnline  = projOnline === projGateways.length && projGateways.length > 0;
+                const allOffline = projOnline === 0 && projGateways.length > 0;
 
-                  return (
-                    <tr key={proj.project_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors text-xs">
-                      <td className="p-4 font-black text-slate-800 dark:text-slate-200 uppercase">
-                        {proj.display_name}
-                      </td>
-                      <td className="p-4 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px]">
-                        {companyName(proj.company_id)}
-                      </td>
-                      <td className="p-4 text-center font-black text-slate-700 dark:text-slate-300">
-                        {projGateways.length}
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md border ${projOnline === projGateways.length && projGateways.length > 0 ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40" : projOnline === 0 ? "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40" : "bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/40"}`}>
-                          {projOnline} / {projGateways.length}
+                return (
+                  <div key={proj.project_id} className="px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{proj.display_name}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{companyName(proj.company_id)}</p>
+                      </div>
+                      {projAlarms.length > 0 ? (
+                        <span className="text-[11px] font-medium bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full shrink-0 animate-pulse">
+                          {projAlarms.length} alarm
                         </span>
-                      </td>
-                      <td className="p-4 text-center">
-                        {projAlarms.length > 0 ? (
-                          <span className="text-[10px] font-black uppercase px-2 py-1 rounded-md border bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40 animate-pulse">
-                            {projAlarms.length} Alarm
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-black uppercase px-2 py-1 rounded-md border bg-slate-50 dark:bg-slate-900/40 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800">
-                            Normal
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      ) : (
+                        <span className="text-[11px] font-medium bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 px-2 py-0.5 rounded-full shrink-0">
+                          Normal
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            allOnline ? "bg-emerald-500" : allOffline ? "bg-rose-400" : "bg-amber-400"
+                          }`}
+                          style={{ width: projGateways.length > 0 ? `${(projOnline / projGateways.length) * 100}%` : "0%" }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-gray-400 font-mono shrink-0">
+                        {projOnline}/{projGateways.length}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -2,43 +2,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-# 🔒 Memasukkan model Project untuk kebutuhan query JOIN pengaman data
-from app.models import Gateway, Project 
+from app.models import Gateway, Project, TelemetryLog
 from app.routers.auth import get_current_user
 from typing import Optional, List, Any
 
 router = APIRouter(prefix="/api/gateways", tags=["Gateways"])
 
 class GatewaySchema(BaseModel):
-    gateway_id: Optional[int] = None  # auto-increment, tidak perlu dikirim saat create
-    hmi_code: Optional[str] = None    # Hardware Terminal ID (misal: HMI-01)
+    gateway_id: Optional[int] = None
+    hmi_code: Optional[str] = None
     name: str
     project_id: Optional[int] = None
-    status: Optional[str] = "offline" # 🔒 Default disetel offline sesuai kesepakatan frontend
+    status: Optional[str] = "offline"
     config: Optional[List[Any]] = []
 
     class Config:
         from_attributes = True
 
-# ==============================================================================
-# 1. POST: Daftarkan Gateway Baru
-# ==============================================================================
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_gateway(
-    gateway: GatewaySchema,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
+def create_gateway(gateway: GatewaySchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
     if role not in ["admin", "rasindo_operator"]:
         raise HTTPException(status_code=403, detail="Akses ditolak!")
-
-    db_gateway = Gateway(
-        hmi_code=gateway.hmi_code,
-        name=gateway.name,
-        project_id=gateway.project_id,
-        status=gateway.status,
-    )
+    db_gateway = Gateway(hmi_code=gateway.hmi_code, name=gateway.name, project_id=gateway.project_id, status=gateway.status)
     try:
         db.add(db_gateway)
         db.commit()
@@ -48,19 +34,11 @@ def create_gateway(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Gagal menyimpan: {str(e)}")
 
-# ==============================================================================
-# 2. GET ALL (🔒 Menggunakan JOIN Tidak Langsung via Project untuk Client Tenant)
-# ==============================================================================
 @router.get("/")
-def get_gateways(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
+def get_gateways(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     try:
         role = current_user.get("role")
         user_company_id = current_user.get("company_id")
-
-        # 🔒 Jika user adalah client, cari gateway lewat project yang dimiliki company mereka
         if role in ["client_operator", "client_user"]:
             gateways = (
                 db.query(Gateway)
@@ -69,46 +47,55 @@ def get_gateways(
                 .all()
             )
             return {"status": "success", "data": gateways}
-
-        # Jika admin atau rasindo_operator, tampilkan semua gateway di seluruh project
         gateways = db.query(Gateway).all()
         return {"status": "success", "data": gateways}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==============================================================================
-# 3. GET SINGLE
-# ==============================================================================
 @router.get("/{gateway_id}")
-def get_gateway(
-    gateway_id: int,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
+def get_gateway(gateway_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
-    return {"status": "success", "data": gateway}
 
-# ==============================================================================
-# 4. PUT: Update Gateway
-# ==============================================================================
+    logs = (
+        db.query(TelemetryLog)
+        .filter(TelemetryLog.gateway_id == gateway_id)
+        .order_by(TelemetryLog.created_at.asc())
+        .limit(1000)
+        .all()
+    )
+
+    return {
+        "status": "success",
+        "data": {
+            "gateway_id": gateway.gateway_id,
+            "name": gateway.name,
+            "hmi_code": gateway.hmi_code,
+            "status": gateway.status,
+            "last_ping": gateway.last_ping,
+            "project_id": gateway.project_id,
+            "config": gateway.config if gateway.config is not None else [],
+            "logs": [
+                {
+                    "id": l.id,
+                    "created_at": l.created_at.isoformat() if l.created_at else None,
+                    "payload": l.payload,
+                    "gateway_id": l.gateway_id,
+                }
+                for l in logs
+            ]
+        }
+    }
+
 @router.put("/{gateway_id}")
-def update_gateway(
-    gateway_id: int,
-    payload: GatewaySchema,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
+def update_gateway(gateway_id: int, payload: GatewaySchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
     if role not in ["admin", "rasindo_operator"]:
         raise HTTPException(status_code=403, detail="Akses ditolak!")
-
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
-
     try:
         gateway.hmi_code = payload.hmi_code
         gateway.name = payload.name
@@ -121,23 +108,14 @@ def update_gateway(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==============================================================================
-# 5. DELETE
-# ==============================================================================
 @router.delete("/{gateway_id}")
-def delete_gateway(
-    gateway_id: int,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
+def delete_gateway(gateway_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
     if role not in ["admin", "rasindo_operator"]:
         raise HTTPException(status_code=403, detail="Akses ditolak!")
-
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
-
     try:
         db.delete(gateway)
         db.commit()

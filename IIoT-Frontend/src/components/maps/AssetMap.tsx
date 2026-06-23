@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes'; 
@@ -45,23 +46,19 @@ export function AssetMap({ isFullScreen, showSearch = false, onSelectLocation }:
   useEffect(() => {
     const fetchData = () => {
       try {
-        const savedUser = localStorage.getItem("iiot_user");
-        const loggedInUser = savedUser ? JSON.parse(savedUser) : null;
-        const companyId = loggedInUser?.company_id || ""; 
-        const userId = loggedInUser?.id || "";
+        const loggedInUser = getLocalUser();
+        const companyId = loggedInUser?.company_id || "";
         const userRole = loggedInUser?.role || "client_user";
 
-        let url = `http://localhost:8000/api/projects/`;
+        let url = `${API_BASE}/projects/`;
         if (userRole !== "admin" && companyId) {
-          url = `http://localhost:8000/api/projects/?company_id=${companyId}`;
+          url = `${API_BASE}/projects/?company_id=${companyId}`;
         }
 
         fetch(url, {
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "X-User-Id": String(userId)
-          }
+          cache: "no-store",
+          headers: getAuthHeaders(),
         })
           .then((res) => {
             if (!res.ok) throw new Error("Backend menolak permintaan atau sesi tidak sah");
@@ -83,7 +80,7 @@ export function AssetMap({ isFullScreen, showSearch = false, onSelectLocation }:
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 5000); 
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
 

@@ -1,13 +1,15 @@
 "use client";
 import React, { useState } from 'react';
-import { UserPlus, Clock, ArrowLeft, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Clock } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+import myLogo from '@/assets/logodragonfly2.png';
 
 export default function RegisterPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -18,45 +20,32 @@ export default function RegisterPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errorMsg) setErrorMsg(""); 
+    if (errorMsg) setErrorMsg("");
   };
 
-  // ========================================================
-  // INTEGRASI BARU: Terhubung ke FastAPI Multi-Tenant
-  // ========================================================
-  // ========================================================
-  // INTEGRASI BARU: Terhubung ke FastAPI Multi-Tenant (Fixed)
-  // ========================================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (formData.password !== formData.confirmPassword) {
-      setErrorMsg("Konfirmasi password tidak cocok!");
+      setErrorMsg("Password confirmation doesn't match.");
       return;
     }
 
     setIsLoading(true);
     setErrorMsg("");
 
-    // Ambil kode, bersihkan spasi, dan paksa menjadi Huruf Kapital Semua
     const cleanInvitationCode = formData.invitationCode.trim().toUpperCase();
 
-    // Lacak isi paket data di Console Browser (F12) sebelum dikirim
-    console.log("=== INSPEKSI PAYLOAD NEXT.JS ===");
-    console.log("Nama:", formData.name);
-    console.log("Email:", formData.email);
-    console.log("Kode dikirim:", cleanInvitationCode);
-    console.log("================================");
-
     try {
-      const response = await fetch('http://localhost:8000/api/auth/register', {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const response = await fetch(`${baseUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name.trim(),
           email: formData.email.trim(),
           password: formData.password,
-          invitation_code: cleanInvitationCode // Menggunakan variabel yang sudah dikunci kapital
+          invitation_code: cleanInvitationCode
         }),
       });
 
@@ -65,151 +54,176 @@ export default function RegisterPage() {
       if (response.ok) {
         setSubmitted(true);
       } else {
-        // Menangkap error detail dari HTTPException milik FastAPI
-        setErrorMsg(result.detail || "Gagal mendaftarkan akun.");
+        setErrorMsg(result.detail || "Failed to create account.");
       }
     } catch (error) {
-      setErrorMsg("Gagal menghubungi server. Pastikan kontainer backend Docker Anda aktif.");
+      setErrorMsg("Could not reach the server. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ========================================================
-  // UI SISI FRONTEND (Tetap Utuh 100% Menggunakan Desain Lu)
-  // ========================================================
+  // ── SUCCESS STATE ──────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans text-slate-900">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-10 text-center border border-slate-200">
-          <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-            <Clock className="w-10 h-10" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-[360px] bg-white rounded-xl border border-gray-200 shadow-lg p-8 text-center">
+          <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <Clock className="w-7 h-7 text-amber-500" />
           </div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">Pendaftaran Terkirim!</h2>
-          <p className="text-slate-500 mt-4 leading-relaxed text-sm">
-            Akun Anda berhasil didaftarkan dengan status <b className="text-amber-600 uppercase tracking-widest text-[10px]">Pending</b>. 
-            Silakan hubungi Admin PT RASINDO untuk aktivasi akses Anda.
+          <h2 className="text-lg font-bold text-gray-900">Registration Submitted</h2>
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            Your account is pending approval. Please contact your administrator to activate access.
           </p>
-          <Link 
+          <Link
             href="/login"
-            className="mt-8 block w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+            className="mt-6 block w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
           >
-            Kembali ke Login
+            Back to Login
           </Link>
         </div>
       </div>
     );
   }
 
+  // ── MAIN FORM ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans text-slate-900">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-slate-200 relative">
-        
-        <Link 
-          href="/login" 
-          className="absolute top-8 left-8 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-[400px]">
+
+        {/* Back to login */}
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6 transition-colors"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
+          Back to login
         </Link>
 
-        <div className="mb-8 mt-10 text-center md:text-left">
-          <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">Daftar Akses Node</h1>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Sistem Monitoring Industrial Dashboard</p>
-        </div>
+        <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
 
-        {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-xs font-bold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4" /> {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Lengkap</label>
-            <input 
-              required 
-              name="name" 
-              value={formData.name}
-              placeholder="Full name..." 
-              onChange={handleChange} 
-              className="w-full mt-1 p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-100 text-sm text-slate-800 font-bold border-none" 
-            />
+          {/* Header */}
+          <div className="px-6 pt-6 pb-5 border-b border-gray-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0">
+                <Image src={myLogo} alt="Logo" fill className="object-cover" priority />
+              </div>
+              <span
+                className="text-lg tracking-tighter text-slate-900 leading-none antialiased"
+                style={{ fontFamily: '"Arial Black", "Impact", sans-serif', fontWeight: 900 }}
+              >
+                Dragonfly<span className="text-zinc-400">.</span>
+                <span className="text-blue-600">io</span>
+              </span>
+            </div>
+            <h1 className="text-base font-semibold text-gray-900">Create an account</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Enter your details to request access</p>
           </div>
 
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Perusahaan</label>
-            <input 
-              required 
-              name="email" 
-              type="email" 
-              value={formData.email}
-              placeholder="corporate@email.com" 
-              onChange={handleChange} 
-              className="w-full mt-1 p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-100 text-sm text-slate-800 font-bold border-none" 
-            />
-          </div>
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
 
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-blue-500" /> Invitation Code
-            </label>
-            <input 
-              required 
-              name="invitationCode" 
-              type="text"
-              value={formData.invitationCode}
-              placeholder="Masukkan kode rahasia..." 
-              onChange={handleChange} 
-              className="w-full mt-1 p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-100 text-sm text-slate-800 font-mono font-black uppercase tracking-widest placeholder:font-sans placeholder:tracking-normal placeholder:font-normal border-none" 
-            />
-            <p className="text-[8px] text-slate-400 mt-2 ml-1 italic leading-tight">
-              *Hanya untuk personil resmi yang memiliki kode undangan perusahaan.
+            {errorMsg && (
+              <div className="flex items-center gap-2.5 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-lg text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Full Name</label>
+              <input
+                required
+                name="name"
+                value={formData.name}
+                placeholder="John Doe"
+                onChange={handleChange}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:text-gray-400"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Work Email</label>
+              <input
+                required
+                name="email"
+                type="email"
+                value={formData.email}
+                placeholder="you@company.com"
+                onChange={handleChange}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:text-gray-400"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
+                Invitation Code
+              </label>
+              <input
+                required
+                name="invitationCode"
+                type="text"
+                value={formData.invitationCode}
+                placeholder="Enter your invite code"
+                onChange={handleChange}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 font-mono tracking-widest outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:font-sans placeholder:tracking-normal uppercase"
+              />
+              <p className="text-xs text-gray-400">
+                Only for personnel with a valid company invitation code.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <input
+                  required
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  placeholder="••••••••"
+                  onChange={handleChange}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Confirm</label>
+                <input
+                  required
+                  name="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  placeholder="••••••••"
+                  onChange={handleChange}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mt-1"
+            >
+              {isLoading
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating account...</>
+                : "Request Access"
+              }
+            </button>
+
+          </form>
+
+          {/* Footer */}
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center">
+            <p className="text-sm text-gray-500">
+              Already have an account?{" "}
+              <Link href="/login" className="text-blue-600 hover:underline font-medium">
+                Sign In
+              </Link>
             </p>
           </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-              <input 
-                required 
-                name="password" 
-                type="password" 
-                value={formData.password}
-                placeholder="••••••••" 
-                onChange={handleChange} 
-                className="w-full mt-1 p-4 bg-slate-50 rounded-2xl text-sm outline-none focus:ring-2 ring-blue-100 text-slate-800 border-none" 
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Konfirmasi Password</label>
-              <input 
-                required 
-                name="confirmPassword" 
-                type="password" 
-                value={formData.confirmPassword}
-                placeholder="••••••••" 
-                onChange={handleChange} 
-                className="w-full mt-1 p-4 bg-slate-50 rounded-2xl text-sm outline-none focus:ring-2 ring-blue-100 text-slate-800 border-none" 
-              />
-            </div>
-          </div>
-
-          <button 
-            type="submit"
-            disabled={isLoading} 
-            className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-black active:scale-95 transition-all flex justify-center items-center gap-2 disabled:bg-slate-400 shadow-none border-none"
-          >
-            {isLoading ? (
-              <Loader2 className="animate-spin w-5 h-5" />
-            ) : (
-              <><UserPlus className="w-4 h-4" /> Ajukan Akses</>
-            )}
-          </button>
-        </form>
-
-        <p className="text-center mt-8 text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-          Sudah punya akun? <Link href="/login" className="text-blue-600 hover:underline ml-1">Masuk di sini</Link>
-        </p>
+        </div>
       </div>
     </div>
   );

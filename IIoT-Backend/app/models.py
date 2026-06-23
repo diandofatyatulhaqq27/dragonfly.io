@@ -87,6 +87,7 @@ class Alarm(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     gateway_id = Column(Integer, ForeignKey("gateways.gateway_id", ondelete="CASCADE"))
+    name = Column(String, nullable=True)
     message = Column(TEXT, nullable=False)
     severity = Column(String, default="CRITICAL")
     status = Column(String, default="ACTIVE")
@@ -119,3 +120,19 @@ class PasswordReset(Base):
     token = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     is_used = Column(Boolean, default=False)
+    
+# ==========================================
+# 9. TABEL Alarm History (REKAM JEJAK ALARM YANG SUDAH TRIGGERED)
+# ==========================================
+class AlarmHistory(Base):
+    __tablename__ = "alarm_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alarm_id = Column(Integer, ForeignKey("alarms.id", ondelete="CASCADE"))
+    gateway_id = Column(Integer, ForeignKey("gateways.gateway_id", ondelete="CASCADE"))
+    alarm_name = Column(String, nullable=True)
+    mqtt_key = Column(String(100), nullable=True)
+    message = Column(TEXT, nullable=True)
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    verified_by = Column(String, nullable=True)

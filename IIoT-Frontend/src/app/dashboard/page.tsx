@@ -1,107 +1,298 @@
 "use client";
-import { useState, useEffect } from "react";
-import { AlertTriangle, Network, Wifi, Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import {
+  AlertTriangle,
+  Wifi,
+  Loader2,
+  WifiOff,
+  BellRing,
+  ChevronRight,
+  Radio,
+} from "lucide-react";
 import { AssetMap } from "@/components/maps/AssetMap";
+import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
+import Link from "next/link";
 
-const API_BASE = "http://localhost:8000/api";
+function timeAgo(dateStr?: string | null): string {
+  if (!dateStr) return "Never";
+  const diffSec = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diffSec < 5) return "Just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function DashboardPage() {
   const [gateways, setGateways] = useState<any[]>([]);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [alarms, setAlarms] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loggedInUser = getLocalUser();
+  const userRole = loggedInUser?.role ?? "client_user";
+  const userCompanyId = String(loggedInUser?.company_id ?? "");
+  const isCompanyScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const headers = getAuthHeaders();
+
+      const gwUrl =
+        isCompanyScoped && userCompanyId
+          ? `${API_BASE}/gateways/?company_id=${userCompanyId}`
+          : `${API_BASE}/gateways/`;
+
+      const [resGw, resAlarm] = await Promise.allSettled([
+        fetch(gwUrl, { headers, cache: "no-store" }),
+        fetch(`${API_BASE}/alarms/`, { headers, cache: "no-store" }),
+      ]);
+
+      if (resGw.status === "fulfilled" && resGw.value.ok)
+        setGateways((await resGw.value.json()).data ?? []);
+
+      if (resAlarm.status === "fulfilled" && resAlarm.value.ok)
+        setAlarms((await resAlarm.value.json()).data ?? []);
+    } catch (err) {
+      console.error("fetchData error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isCompanyScoped, userCompanyId]);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoadingStats(true);
-
-        const token = localStorage.getItem("iiot_token");
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-
-        const resGateways = await fetch(`${API_BASE}/gateways/`, { 
-          method: "GET", 
-          cache: "no-store", 
-          headers 
-        });
-
-        if (resGateways.ok) {
-          const result = await resGateways.json();
-          setGateways(result.data || []);
-        } else {
-          console.error("FastAPI menolak request gateways. Status:", resGateways.status);
-        }
-
-      } catch (err) {
-        console.error("Gagal memuat statistik dashboard:", err);
-      } finally {
-        setIsLoadingStats(false);
-      }
-    };
-
-    fetchDashboardData();
-  }, []);
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   const totalGateways = gateways.length;
-  const onlineGateways = gateways.filter(g => g.status === "online").length;
-  const activeAlarms = gateways.filter(g => g.status === "alarm").length;
+  const onlineGateways = gateways.filter((g) => g.status === "online").length;
+  const offlineGateways = totalGateways - onlineGateways;
+  const activeAlarms = alarms.filter((a) => a.status === "ACTIVE");
+
+  const recentOffline = gateways
+    .filter((g) => g.status === "offline")
+    .sort(
+      (a, b) =>
+        new Date(b.last_ping ?? 0).getTime() - new Date(a.last_ping ?? 0).getTime()
+    )
+    .slice(0, 4);
 
   return (
-    <div className="relative w-full h-full flex flex-col font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
-
-      {/* FLOATING HUD CAPSULE */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 bg-white/85 dark:bg-slate-900/85 backdrop-blur-lg border border-slate-200/80 dark:border-slate-800/80 p-4 px-8 rounded-3xl shadow-xl shadow-slate-200/10 dark:shadow-none flex items-center gap-10 transition-all duration-300">
-
-        {/* Metrik 1: Total Gateways */}
-        <div className="flex flex-col items-center justify-center gap-1.5 min-w-[70px]">
-          <Network className="w-5 h-5 text-blue-500 dark:text-blue-400" />
-          {isLoadingStats ? (
-            <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
-          ) : (
-            <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tight">
-              {totalGateways} Gateways
-            </span>
-          )}
-        </div>
-
-        <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-800" />
-
-        {/* Metrik 2: Online Gateways */}
-        <div className="flex flex-col items-center justify-center gap-1.5 min-w-[70px]">
-          <Wifi className={`w-5 h-5 ${onlineGateways > 0 ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-600'}`} />
-          {isLoadingStats ? (
-            <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
-          ) : (
-            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tight">
-              {onlineGateways} Online
-            </span>
-          )}
-        </div>
-
-        <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-800" />
-
-        {/* Metrik 3: Active Alarms */}
-        <div className="flex flex-col items-center justify-center gap-1.5 min-w-[70px]">
-          <AlertTriangle className={`w-5 h-5 ${activeAlarms > 0 ? 'text-red-600 dark:text-red-500 animate-pulse' : 'text-slate-300 dark:text-slate-600'}`} />
-          {isLoadingStats ? (
-            <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
-          ) : (
-            <span className={`text-[11px] font-black uppercase tracking-tight ${activeAlarms > 0 ? 'text-red-700 dark:text-red-400' : 'text-slate-400 dark:text-slate-500'}`}>
-              {activeAlarms} Active
-            </span>
-          )}
-        </div>
-
-      </div>
-
-      {/* FULLSCREEN MAP */}
-      <div className="w-full h-full absolute inset-0 z-10 bg-slate-100 dark:bg-slate-950 transition-colors duration-300">
+    <div className="relative flex flex-col items-start h-full min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
+      {/* MAP Background */}
+      <div className="absolute inset-0 w-full h-full z-0">
         <AssetMap isFullScreen={true} />
       </div>
 
+      {/* LEFT PANEL */}
+      <div className="relative z-10 w-full max-w-[340px] flex flex-col gap-3">
+
+        {/* Header card */}
+        <div className="rounded-2xl border border-white/60 dark:border-gray-700/60 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-lg px-5 py-4">
+          <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            {greeting()} 👋
+          </h1>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Here's your network status right now.
+          </p>
+        </div>
+
+        {/* ── 2 STAT CARDS ── */}
+        <div className="grid grid-cols-2 gap-3">
+
+          {/* Offline Gateways */}
+          <div
+            className={`rounded-2xl p-4 border shadow-sm transition-all ${
+              offlineGateways > 0
+                ? "bg-rose-500 border-rose-400 shadow-rose-200 dark:shadow-rose-900/30"
+                : "bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-white/60 dark:border-gray-700/60"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <WifiOff
+                className={`w-4 h-4 ${
+                  offlineGateways > 0 ? "text-white/80" : "text-gray-400 dark:text-gray-500"
+                }`}
+              />
+              {offlineGateways > 0 && (
+                <span className="text-[10px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">
+                  ALERT
+                </span>
+              )}
+            </div>
+
+            {isLoading ? (
+              <div className="h-8 w-12 bg-white/20 rounded-lg animate-pulse" />
+            ) : (
+              <>
+                <p
+                  className={`text-3xl font-bold tracking-tight ${
+                    offlineGateways > 0
+                      ? "text-white"
+                      : "text-gray-800 dark:text-gray-100"
+                  }`}
+                >
+                  {offlineGateways}
+                </p>
+                <p
+                  className={`text-[11px] mt-1 font-medium ${
+                    offlineGateways > 0
+                      ? "text-white/70"
+                      : "text-gray-400 dark:text-gray-500"
+                  }`}
+                >
+                  {offlineGateways > 0 ? "gateway offline" : "all gateways up"}
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Active Alarms */}
+          <div
+            className={`rounded-2xl p-4 border shadow-sm transition-all ${
+              activeAlarms.length > 0
+                ? "bg-amber-500 border-amber-400 shadow-amber-200 dark:shadow-amber-900/30"
+                : "bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-white/60 dark:border-gray-700/60"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <BellRing
+                className={`w-4 h-4 ${
+                  activeAlarms.length > 0 ? "text-white/80" : "text-gray-400 dark:text-gray-500"
+                }`}
+              />
+              {activeAlarms.length > 0 && (
+                <span className="text-[10px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full">
+                  ACTIVE
+                </span>
+              )}
+            </div>
+
+            {isLoading ? (
+              <div className="h-8 w-12 bg-white/20 rounded-lg animate-pulse" />
+            ) : (
+              <>
+                <p
+                  className={`text-3xl font-bold tracking-tight ${
+                    activeAlarms.length > 0
+                      ? "text-white"
+                      : "text-gray-800 dark:text-gray-100"
+                  }`}
+                >
+                  {activeAlarms.length}
+                </p>
+                <p
+                  className={`text-[11px] mt-1 font-medium ${
+                    activeAlarms.length > 0
+                      ? "text-white/70"
+                      : "text-gray-400 dark:text-gray-500"
+                  }`}
+                >
+                  {activeAlarms.length > 0 ? "active alarm" : "no active alarms"}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Offline gateway list ── */}
+        {!isLoading && recentOffline.length > 0 && (
+          <div className="rounded-2xl border border-white/60 dark:border-gray-700/60 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
+              <WifiOff className="w-3.5 h-3.5 text-rose-500" />
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Offline Gateways
+              </span>
+              <span className="ml-auto text-[11px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full font-medium">
+                {offlineGateways}
+              </span>
+            </div>
+            <div className="divide-y divide-gray-50 dark:divide-gray-800/80">
+              {recentOffline.map((gw) => (
+                <div key={gw.id} className="px-4 py-2.5 flex items-center gap-3">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                      {gw.name ?? gw.id}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      Last seen {timeAgo(gw.last_ping)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-50 dark:border-gray-800">
+              <Link
+                href="/dashboard/gateways"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                View all gateways <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ── Active alarms list ── */}
+        {!isLoading && activeAlarms.length > 0 && (
+          <div className="rounded-2xl border border-white/60 dark:border-gray-700/60 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
+              <BellRing className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Active Alarms
+              </span>
+              <span className="ml-auto text-[11px] bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
+                {activeAlarms.length}
+              </span>
+            </div>
+            <div className="divide-y divide-gray-50 dark:divide-gray-800/80 max-h-44 overflow-y-auto">
+              {activeAlarms.slice(0, 5).map((alarm) => (
+                <div key={alarm.id} className="px-4 py-2.5 flex items-start gap-2.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+                      {alarm.name || alarm.mqtt_key || "Unnamed Alarm"}
+                    </p>
+                    <p className="text-[11px] text-gray-400 truncate">{alarm.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-50 dark:border-gray-800">
+              <Link
+                href="/dashboard/alarms"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                View all alarms <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ── All clear state ── */}
+        {!isLoading && offlineGateways === 0 && activeAlarms.length === 0 && totalGateways > 0 && (
+          <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/30 backdrop-blur-md px-5 py-4 flex items-center gap-3">
+            <Wifi className="w-4 h-4 text-emerald-500 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                All systems normal
+              </p>
+              <p className="text-[11px] text-emerald-600/70 dark:text-emerald-500 mt-0.5">
+                {totalGateways} gateways online · No active alarms
+              </p>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import os
+import ssl
 import paho.mqtt.client as mqtt
 from app.mqtt.message_handler import MessageHandler
 
@@ -8,16 +9,28 @@ class MQTTClient:
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.client.on_disconnect = self.on_disconnect
+
+        # Set username & password kalau ada di env var
+        username = os.getenv("MQTT_USERNAME")
+        password = os.getenv("MQTT_PASSWORD")
+        if username and password:
+            self.client.username_pw_set(username, password)
+
+        # Aktifkan TLS kalau MQTT_USE_TLS=true (dipakai untuk HiveMQ Cloud)
+        if os.getenv("MQTT_USE_TLS", "false").lower() == "true":
+            self.client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            print("✅ Backend FastAPI Berhasil Terhubung ke Broker MQTT Docker!")
-            # Subscribe ke semua topic data/* karena vendor & product bersifat dinamis
-            # Format: data/{vendor}/{product}/{terminal_id}
+            print("✅ Backend FastAPI Berhasil Terhubung ke Broker MQTT!")
             client.subscribe("data/#")
             client.subscribe("iiot/sensor/gas")
         else:
             print(f"❌ Gagal koneksi ke MQTT, error code: {rc}")
+
+    def on_disconnect(self, client, userdata, rc):
+        print(f"⚠️ MQTT Terputus (rc={rc}), paho akan auto-reconnect...")
 
     def on_message(self, client, userdata, message):
         try:

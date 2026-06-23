@@ -1,3 +1,9 @@
+import os
+import secrets
+from datetime import datetime, timedelta
+from fastapi import BackgroundTasks
+from app.models import PasswordReset
+from app.email_service import send_reset_email
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
@@ -129,3 +135,116 @@ def login(payload: LoginSchema, db: Session = Depends(get_db)):
             "company_id": user.company_id
         }
     }
+
+@router.get("/seed-admin")
+def seed_admin(secret: str, db: Session = Depends(get_db)):
+    if secret != os.getenv("SEED_SECRET"):
+        raise HTTPException(status_code=403, detail="Secret salah")
+
+    existing = db.query(User).filter(User.email == "admin@iiot.com").first()
+    if existing:
+        return {"status": "sudah ada", "email": existing.email}
+
+    company = db.query(Company).first()
+    if not company:
+        company = Company(name="Default Company", invitation_code="ADMIN2026")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+    hashed = pwd_context.hash("Admin123!")
+    admin_user = User(
+        name="Administrator",
+        email="admin@iiot.com",
+        password=hashed,
+        role="admin",
+        company_id=company.id,
+        is_approved=True
+    )
+    db.add(admin_user)
+    db.commit()
+
+    return {
+        "status": "success",
+        "email": "admin@iiot.com",
+        "password": "Admin123!",
+        "invitation_code": company.invitation_code
+    }
+    
+# ========================================================
+# 3. ENDPOINT FORGOT PASSWORD (user request via email)
+# ========================================================
+class ForgotPasswordSchema(BaseModel):
+    email: EmailStr
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: ForgotPasswordSchema,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == payload.email).first()
+
+    # Selalu return success meski email tidak ada
+    # (security: jangan bocorkan apakah email terdaftar atau tidak)
+    if not user:
+        return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
+
+    # Hapus token lama kalau ada
+    db.query(PasswordReset).filter(PasswordReset.email == payload.email).delete()
+    db.commit()
+
+    # Generate token baru
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
+
+    db_reset = PasswordReset(
+        email=payload.email,
+        token=token,
+        expires_at=expires_at,
+        is_used=False
+    )
+    db.add(db_reset)
+    db.commit()
+
+    # Build reset link
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    reset_link = f"{frontend_url}/reset-password?token={token}"
+
+    # Kirim email di background (tidak block response)
+    background_tasks.add_task(send_reset_email, payload.email, reset_link)
+
+    return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
+
+
+# ========================================================
+# 4. ENDPOINT EXECUTE RESET PASSWORD (pakai token dari email)
+# ========================================================
+class ResetPasswordSchema(BaseModel):
+    token: str
+    new_password: str
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordSchema, db: Session = Depends(get_db)):
+    db_reset = db.query(PasswordReset).filter(
+        PasswordReset.token == payload.token,
+        PasswordReset.is_used == False
+    ).first()
+
+    if not db_reset:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+
+    if datetime.utcnow() > db_reset.expires_at:
+        db.delete(db_reset)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Reset token has expired. Please request a new one.")
+
+    user = db.query(User).filter(User.email == db_reset.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user.password = pwd_context.hash(payload.new_password)
+    db_reset.is_used = True
+
+    db.commit()
+    return {"status": "success", "message": "Password updated successfully."}
