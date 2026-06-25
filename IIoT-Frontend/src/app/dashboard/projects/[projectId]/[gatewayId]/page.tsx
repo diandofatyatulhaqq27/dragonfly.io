@@ -304,8 +304,8 @@ export default function GatewayDetailPage() {
         {/* ── MAIN AREA (grid + sidebar) ────────────────────────────────────── */}
         <div className="flex gap-5">
 
-          {/* ── GRID AREA ─────────────────────────────────────────────────── */}
-          <div className="flex-1 min-w-0" ref={gridRef}>
+         {/* ── GRID AREA ─────────────────────────────────────────────────── */}
+          <div className={`flex-1 min-w-0 ${isEditMode ? "edit-mode" : ""}`} ref={gridRef}>
             {editConfig.length === 0 ? (
               <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-12 text-center">
                 <LayoutGrid className="w-7 h-7 text-slate-300 dark:text-slate-600 mx-auto mb-2.5" />
@@ -329,7 +329,6 @@ export default function GatewayDetailPage() {
               >
                 {editConfig.map((item, index) => (
                   <div key={String(index)} className="relative">
-                    {/* Drag handle — hanya muncul saat edit mode */}
                     {isEditMode && (
                       <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
                         <div className="flex gap-0.5">
@@ -353,14 +352,13 @@ export default function GatewayDetailPage() {
             )}
           </div>
 
-          {/* ── SIDEBAR ───────────────────────────────────────────────────── */}
           <div className={`shrink-0 transition-all duration-300 overflow-hidden ${
-            !isEditMode
-              ? "w-0 opacity-0 pointer-events-none"
-              : selectedItem !== null
-              ? "w-72 opacity-100"
-              : "w-56 opacity-100"
-          }`}>
+              !isEditMode
+                ? "w-0 opacity-0 pointer-events-none"
+                : selectedItem !== null
+                ? "w-72 opacity-100"
+                : "w-56 opacity-100"
+            }`}>
             <div className="sticky top-20 space-y-3">
 
               {/* Settings panel — muncul saat panel dipilih */}
