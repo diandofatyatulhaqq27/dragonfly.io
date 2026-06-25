@@ -247,7 +247,8 @@ export default function GatewayDetailPage() {
           style={{
             left:      panelPos.x,
             top:       panelPos.y,
-            maxHeight: "calc(100vh - 100px)",
+            maxHeight: "80vh",  // ← max 80% tinggi layar
+            minHeight: "auto",  // ← tidak ada minimum, ikut konten
           }}
         >
           {/* Drag handle */}
@@ -271,7 +272,8 @@ export default function GatewayDetailPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto min-h-0">
             <WidgetSettingsPanel
               item={selectedItem}
               index={selectedIdx}
@@ -425,22 +427,22 @@ export default function GatewayDetailPage() {
             )}
           </div>
 
-          {/* ── SIDEBAR — hanya meta properties, muncul saat edit mode ──── */}
-          <div className={`shrink-0 transition-all duration-300 overflow-hidden ${
-            !isEditMode ? "w-0 opacity-0 pointer-events-none" : "w-52 opacity-100"
-          }`}>
-            <div className="sticky top-20 space-y-3">
-
-              {/* Edit hint */}
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 text-center">
-                <Pencil className="w-5 h-5 text-blue-400 mx-auto mb-2" />
-                <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">
-                  {selectedItem !== null ? "Panel dipilih ✓" : "Klik panel untuk setting"}
-                </p>
-                <p className="text-[9px] text-blue-400 mt-1">
-                  Setting muncul sebagai panel melayang yang bisa digeser.
-                </p>
+          {/* ── SIDEBAR — hanya tampil saat edit mode ────────────────────── */}
+            {isEditMode && (
+              <div className="shrink-0 w-52">
+                <div className="sticky top-20">
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 text-center">
+                    <Pencil className="w-5 h-5 text-blue-400 mx-auto mb-2" />
+                    <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">
+                      {selectedItem !== null ? "Panel dipilih ✓" : "Klik panel untuk setting"}
+                    </p>
+                    <p className="text-[9px] text-blue-400 mt-1">
+                      Setting muncul sebagai panel melayang yang bisa digeser.
+                    </p>
+                  </div>
+                </div>
               </div>
+            )}
 
               {/* Meta panel */}
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
@@ -485,7 +487,5 @@ export default function GatewayDetailPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
   );
 }
