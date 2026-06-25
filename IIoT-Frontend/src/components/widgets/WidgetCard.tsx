@@ -15,6 +15,23 @@ import {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MULTI_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+const DECIMAL_OPTIONS = [
+  { value: -1, label: "Auto" },
+  { value: 0,  label: "0" },
+  { value: 1,  label: "0.0" },
+  { value: 2,  label: "0.00" },
+  { value: 3,  label: "0.000" },
+];
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function formatVal(value: any, decimals?: number): string {
+  if (value === null || value === undefined) return "—";
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+  if (decimals === undefined || decimals < 0) return String(value);
+  return num.toFixed(decimals);
+}
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -90,10 +107,10 @@ function WidgetEditForm({
 }) {
   const isChart    = item.type === "chart" || item.type === "bar";
   const isGauge    = item.type === "gauge";
+  const isTrend    = item.type === "trend";
   const isStatus   = item.type === "status";
   const isMultiKey = item.type === "chart" && (item.keys?.length ?? 0) > 1;
 
-  // ✅ FIX 3: state lokal untuk raw input area-chart keys
   const [rawKeys, setRawKeys] = React.useState<string>(
     item.keys?.length ? item.keys.join(", ") : item.key
   );
@@ -160,18 +177,20 @@ function WidgetEditForm({
         </div>
       )}
 
-      {/* Unit + Size */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className={lbl}>Satuan</label>
-          <input
-            className={inp}
-            placeholder="°C"
-            autoCapitalize="none"
-            value={item.unit ?? ""}
-            onChange={(e) => onUpdate(index, "unit", e.target.value)}
-          />
-        </div>
+      {/* Unit + Size — satuan disembunyikan untuk status */}
+      <div className={`grid gap-2 ${isStatus ? "grid-cols-1" : "grid-cols-2"}`}>
+        {!isStatus && (
+          <div>
+            <label className={lbl}>Satuan</label>
+            <input
+              className={inp}
+              placeholder="°C"
+              autoCapitalize="none"
+              value={item.unit ?? ""}
+              onChange={(e) => onUpdate(index, "unit", e.target.value)}
+            />
+          </div>
+        )}
         <div>
           <label className={lbl}>Ukuran</label>
           <select
@@ -185,6 +204,28 @@ function WidgetEditForm({
           </select>
         </div>
       </div>
+
+      {/* Desimal — untuk gauge dan trend */}
+      {(isGauge || isTrend) && (
+        <div>
+          <label className={lbl}>Format Desimal</label>
+          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+            {DECIMAL_OPTIONS.map((d) => (
+              <button
+                key={d.value}
+                onClick={() => onUpdate(index, "decimals", d.value)}
+                className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide border transition-all cursor-pointer ${
+                  (item.decimals ?? -1) === d.value
+                    ? "bg-blue-500 border-blue-500 text-white"
+                    : "bg-transparent border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Warna aksen — non-chart, bar, atau area single key */}
       {(!isChart || item.type === "bar" || !isMultiKey) && (
@@ -274,15 +315,11 @@ function WidgetEditForm({
             <input
               className={`${inp} font-mono text-blue-600 dark:text-blue-400`}
               placeholder="CHWS, CHWR, INVRTR"
-              // ✅ FIX 3: pakai rawKeys, bukan item.keys.join (yang reset koma)
               value={rawKeys}
               onChange={(e) => {
                 const raw = e.target.value;
-                setRawKeys(raw); // selalu update display dulu
-
-                // jangan parse kalau user masih mengetik separator
+                setRawKeys(raw);
                 if (raw.endsWith(",") || raw.endsWith(", ") || raw.endsWith(" ")) return;
-
                 const arr = raw.split(",").map((s) => s.trim()).filter(Boolean);
                 if (arr.length > 1) {
                   onUpdate(index, "keys", arr);
@@ -296,43 +333,79 @@ function WidgetEditForm({
             <p className="text-[9px] text-slate-400 mt-1">Contoh: CHWS, CHWR — akan jadi 2 garis berbeda</p>
           </div>
 
-          {/* Color picker per key — hanya muncul jika multi key */}
+          {/* Color + Decimal per key — hanya muncul jika multi key */}
           {isMultiKey && (
-            <div>
-              <label className={lbl}>Warna Per Garis</label>
-              <div className="space-y-2 mt-1.5">
-                {item.keys!.map((k, i) => (
-                  <div key={k} className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 w-16 truncate shrink-0">{k}</span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316"].map((c) => {
-                        const isSelected = (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) === c;
-                        return (
-                          <button
-                            key={c}
-                            onClick={() => {
-                              const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
-                              updated[i] = c;
-                              onUpdate(index, "colors", updated);
-                            }}
-                            className={`w-4 h-4 rounded-full border-2 transition-all cursor-pointer ${isSelected ? "border-slate-600 scale-110" : "border-transparent"}`}
-                            style={{ backgroundColor: c }}
-                          />
-                        );
-                      })}
-                      <input
-                        type="color"
-                        value={item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]}
-                        onChange={(e) => {
-                          const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
-                          updated[i] = e.target.value;
-                          onUpdate(index, "colors", updated);
-                        }}
-                        className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent"
-                      />
+            <div className="space-y-3">
+              <div>
+                <label className={lbl}>Warna Per Garis</label>
+                <div className="space-y-2 mt-1.5">
+                  {item.keys!.map((k, i) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 w-16 truncate shrink-0">{k}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316"].map((c) => {
+                          const isSelected = (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) === c;
+                          return (
+                            <button
+                              key={c}
+                              onClick={() => {
+                                const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
+                                updated[i] = c;
+                                onUpdate(index, "colors", updated);
+                              }}
+                              className={`w-4 h-4 rounded-full border-2 transition-all cursor-pointer ${isSelected ? "border-slate-600 scale-110" : "border-transparent"}`}
+                              style={{ backgroundColor: c }}
+                            />
+                          );
+                        })}
+                        <input
+                          type="color"
+                          value={item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]}
+                          onChange={(e) => {
+                            const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
+                            updated[i] = e.target.value;
+                            onUpdate(index, "colors", updated);
+                          }}
+                          className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+
+              {/* Decimal per key */}
+              <div>
+                <label className={lbl}>Desimal Per Garis</label>
+                <div className="space-y-2 mt-1.5">
+                  {item.keys!.map((k, i) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 w-16 truncate shrink-0">{k}</span>
+                      <div className="flex gap-1 flex-wrap">
+                        {DECIMAL_OPTIONS.map((d) => {
+                          const current = item.keyDecimals?.[i] ?? -1;
+                          return (
+                            <button
+                              key={d.value}
+                              onClick={() => {
+                                const updated = [...(item.keyDecimals ?? item.keys!.map(() => -1))];
+                                updated[i] = d.value;
+                                onUpdate(index, "keyDecimals", updated);
+                              }}
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-black border transition-all cursor-pointer ${
+                                current === d.value
+                                  ? "bg-blue-500 border-blue-500 text-white"
+                                  : "bg-transparent border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300"
+                              }`}
+                            >
+                              {d.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -398,8 +471,8 @@ function WidgetDisplay({
       </div>
 
       {item.type === "value"  && <ValueDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} />}
-      {item.type === "trend"  && <TrendDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} sparkData={sparkData} />}
-      {item.type === "gauge"  && <GaugeDisplay  value={latestValue} unit={item.unit} color={color} min={item.min ?? 0} max={item.max ?? 100} />}
+      {item.type === "trend"  && <TrendDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} sparkData={sparkData} decimals={item.decimals} />}
+      {item.type === "gauge"  && <GaugeDisplay  value={latestValue} unit={item.unit} color={color} min={item.min ?? 0} max={item.max ?? 100} decimals={item.decimals} />}
       {item.type === "status" && <StatusDisplay value={latestValue} label={item.label} color={color} onValue={item.onValue} isOnline={isOnline} />}
       {item.type === "chart"  && <AreaDisplay   data={chartData} color={color} item={item} />}
       {item.type === "bar"    && <BarDisplay    data={chartData} color={color} />}
@@ -413,7 +486,7 @@ function ValueDisplay({ value, unit, color, isOnline }: { value: any; unit?: str
   return (
     <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
       <span
-        className={`text-8xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
+        className={`text-6xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
         style={{ color: isOnline ? color : undefined }}
       >
         {value ?? "—"}
@@ -427,26 +500,27 @@ function ValueDisplay({ value, unit, color, isOnline }: { value: any; unit?: str
 
 // ─── TREND ───────────────────────────────────────────────────────────────────
 
-function TrendDisplay({ value, unit, color, isOnline, sparkData }: {
-  value: any; unit?: string; color: string; isOnline: boolean; sparkData: { val: number }[];
+function TrendDisplay({ value, unit, color, isOnline, sparkData, decimals }: {
+  value: any; unit?: string; color: string; isOnline: boolean; sparkData: { val: number }[]; decimals?: number;
 }) {
-  const prev  = sparkData.length > 1 ? sparkData[sparkData.length - 2].val : null;
-  const curr  = Number(value ?? 0);
-  const delta = prev !== null ? curr - prev : null;
+  const prev      = sparkData.length > 1 ? sparkData[sparkData.length - 2].val : null;
+  const curr      = Number(value ?? 0);
+  const delta     = prev !== null ? curr - prev : null;
+  const displayed = formatVal(value, decimals);
 
   return (
     <div className="flex flex-col gap-1 mt-auto">
       <div className="flex items-baseline gap-1.5">
         <span
-          className={`text-8xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
+          className={`text-5xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
           style={{ color: isOnline ? color : undefined }}
         >
-          {value ?? "—"}
+          {displayed}
         </span>
         {unit && <span className="text-sm font-black text-slate-400">{unit}</span>}
-        {delta !== null && Math.abs(delta) >= 0.05 && (
+        {delta !== null && Math.abs(delta) >= 0.005 && (
           <span className={`text-[10px] font-black ml-1 ${delta > 0 ? "text-rose-500" : "text-emerald-500"}`}>
-            {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}
+            {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(decimals !== undefined && decimals >= 0 ? decimals : 1)}
           </span>
         )}
       </div>
@@ -465,11 +539,12 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData }: {
 
 // ─── GAUGE ───────────────────────────────────────────────────────────────────
 
-function GaugeDisplay({ value, unit, color, min, max }: {
-  value: any; unit?: string; color: string; min: number; max: number;
+function GaugeDisplay({ value, unit, color, min, max, decimals }: {
+  value: any; unit?: string; color: string; min: number; max: number; decimals?: number;
 }) {
-  const num = Number(value ?? min);
-  const pct = Math.min(1, Math.max(0, (num - min) / (max - min)));
+  const num       = Number(value ?? min);
+  const pct       = Math.min(1, Math.max(0, (num - min) / (max - min)));
+  const displayed = formatVal(value, decimals);
 
   const R  = 38;
   const cx = 55, cy = 55;
@@ -491,7 +566,7 @@ function GaugeDisplay({ value, unit, color, min, max }: {
       <svg width="140" height="100" viewBox="0 0 110 80">
         <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" className="dark:stroke-slate-700" />
         {fillPath && <path d={fillPath} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" />}
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="20" fontWeight="900" fill={color}>{value ?? "—"}</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="20" fontWeight="900" fill={color}>{displayed}</text>
         {unit && <text x={cx} y={cy + 26} textAnchor="middle" fontSize="10" fontWeight="700" fill="#94a3b8">{unit}</text>}
         <text x="10" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1">{min}</text>
         <text x="92" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1" textAnchor="end">{max}</text>
@@ -532,12 +607,17 @@ function AreaDisplay({ data, color, item }: {
   const isMulti = item.type === "chart" && (item.keys?.length ?? 0) > 1;
   const keys    = isMulti ? item.keys! : [item.key];
 
-  // Tambah idx unik supaya tooltip tidak bingung saat time duplikat
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
 
   const getColor = (i: number) => {
     if (!isMulti) return color;
     return item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length];
+  };
+
+  const getDecimals = (i: number): number | undefined => {
+    if (!isMulti) return undefined;
+    const d = item.keyDecimals?.[i] ?? -1;
+    return d < 0 ? undefined : d;
   };
 
   return (
@@ -557,7 +637,6 @@ function AreaDisplay({ data, color, item }: {
             interval="preserveStartEnd"
           />
           <YAxis tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-          {/* ✅ FIX tooltip nempel kanan: allowEscapeViewBox=false + posisi flip otomatis */}
           <Tooltip
             allowEscapeViewBox={{ x: false, y: false }}
             contentStyle={{
@@ -568,7 +647,12 @@ function AreaDisplay({ data, color, item }: {
               padding: "6px 10px",
               backgroundColor: "#fff",
             }}
-            formatter={(value: any, name: string) => [value, isMulti ? name : item.key]}
+            formatter={(value: any, name: string, props: any) => {
+              // cari index key untuk ambil decimals yang sesuai
+              const keyIdx = isMulti ? keys.indexOf(name) : 0;
+              const dec    = getDecimals(keyIdx);
+              return [formatVal(value, dec), isMulti ? name : item.key];
+            }}
             labelFormatter={(idx) => indexed[Number(idx)]?.time ?? ""}
             labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
           />
@@ -594,8 +678,6 @@ function AreaDisplay({ data, color, item }: {
 // ─── BAR CHART ───────────────────────────────────────────────────────────────
 
 function BarDisplay({ data, color }: { data: { time: string; val: number }[]; color: string }) {
-  // Tambah idx unik supaya saat time duplikat (misal "16.28" berulang)
-  // Recharts tidak salah resolve index bar yang di-hover
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
 
   return (
@@ -607,7 +689,6 @@ function BarDisplay({ data, color }: { data: { time: string; val: number }[]; co
             interval="preserveStartEnd"
           />
           <YAxis tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-          {/* ✅ FIX data tooltip salah: pakai labelFormatter untuk tampilkan time yang benar */}
           <Tooltip
             allowEscapeViewBox={{ x: false, y: false }}
             contentStyle={{ fontSize: "10px", fontWeight: 700, borderRadius: "10px", border: "1px solid #e2e8f0", padding: "4px 8px", backgroundColor: "#fff" }}

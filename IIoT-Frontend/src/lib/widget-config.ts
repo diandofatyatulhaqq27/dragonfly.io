@@ -6,22 +6,26 @@ export interface WidgetItem {
   key: string;
   keys?: string[];
   colors?: string[];
+  /** Desimal per key untuk area chart multi-key (-1 = auto) */
+  keyDecimals?: number[];
   label: string;
   type: WidgetType;
   unit?: string;
   size?: string;
   range?: string;
-  /** Untuk gauge: nilai minimum (default 0) */
+  /** Gauge: nilai minimum (default 0) */
   min?: number;
-  /** Untuk gauge: nilai maksimum (default 100) */
+  /** Gauge: nilai maksimum (default 100) */
   max?: number;
-  /** Untuk status: nilai yang dianggap "ON" (default "1" / "true" / "on") */
+  /** Status: nilai yang dianggap "ON" */
   onValue?: string;
-  /** Warna aksen widget, hex. Default otomatis per tipe. */
+  /** Warna aksen widget */
   color?: string;
+  /** Format desimal untuk gauge & trend (-1 = auto, 0 = bulat, 1 = 0.0, dst) */
+  decimals?: number;
 }
 
-// ─── Widget type metadata (untuk picker UI) ─────────────────────────────────
+// ─── Widget type metadata ────────────────────────────────────────────────────
 
 export const WIDGET_TYPES: {
   value: WidgetType;
@@ -30,20 +34,20 @@ export const WIDGET_TYPES: {
   icon: string;
   defaultSize: string;
 }[] = [
-  { value: "value",  label: "Nilai",    desc: "Angka real-time besar",        icon: "hash",       defaultSize: "small"  },
-  { value: "trend",  label: "Tren",     desc: "Nilai + sparkline mini",        icon: "trending-up", defaultSize: "small" },
-  { value: "gauge",  label: "Gauge",    desc: "Meter setengah lingkaran",      icon: "gauge",      defaultSize: "small"  },
-  { value: "status", label: "Status",   desc: "Indikator ON / OFF",            icon: "toggle",     defaultSize: "small"  },
-  { value: "chart",  label: "Area",     desc: "Grafik area historis",          icon: "area",       defaultSize: "medium" },
-  { value: "bar",    label: "Bar",      desc: "Grafik batang historis",        icon: "bar",        defaultSize: "medium" },
+  { value: "value",  label: "Nilai",    desc: "Angka real-time besar",        icon: "hash",        defaultSize: "small"  },
+  { value: "trend",  label: "Tren",     desc: "Nilai + sparkline mini",        icon: "trending-up", defaultSize: "small"  },
+  { value: "gauge",  label: "Gauge",    desc: "Meter setengah lingkaran",      icon: "gauge",       defaultSize: "small"  },
+  { value: "status", label: "Status",   desc: "Indikator ON / OFF",            icon: "toggle",      defaultSize: "small"  },
+  { value: "chart",  label: "Area",     desc: "Grafik area historis",          icon: "area",        defaultSize: "medium" },
+  { value: "bar",    label: "Bar",      desc: "Grafik batang historis",        icon: "bar",         defaultSize: "medium" },
 ];
 
 // ─── Size ────────────────────────────────────────────────────────────────────
 
 export const SIZE_OPTIONS = [
-  { value: "small",  label: "Kecil",  colSpan: "col-span-1"                    },
-  { value: "medium", label: "Sedang", colSpan: "md:col-span-2"                 },
-  { value: "large",  label: "Besar",  colSpan: "md:col-span-2 xl:col-span-3"   },
+  { value: "small",  label: "Kecil",  colSpan: "col-span-1"                  },
+  { value: "medium", label: "Sedang", colSpan: "md:col-span-2"               },
+  { value: "large",  label: "Besar",  colSpan: "md:col-span-2 xl:col-span-3" },
 ];
 
 export function getSizeClass(size: string | undefined, type: WidgetType): string {
@@ -55,11 +59,11 @@ export function getSizeClass(size: string | undefined, type: WidgetType): string
 // ─── Range ───────────────────────────────────────────────────────────────────
 
 export const RANGE_OPTIONS = [
-  { value: "1h",  label: "1 Jam",   ms: 60 * 60 * 1000             },
-  { value: "6h",  label: "6 Jam",   ms: 6 * 60 * 60 * 1000         },
-  { value: "24h", label: "24 Jam",  ms: 24 * 60 * 60 * 1000        },
-  { value: "7d",  label: "7 Hari",  ms: 7 * 24 * 60 * 60 * 1000    },
-  { value: "30d", label: "30 Hari", ms: 30 * 24 * 60 * 60 * 1000   },
+  { value: "1h",  label: "1 Jam",   ms: 60 * 60 * 1000           },
+  { value: "6h",  label: "6 Jam",   ms: 6 * 60 * 60 * 1000       },
+  { value: "24h", label: "24 Jam",  ms: 24 * 60 * 60 * 1000      },
+  { value: "7d",  label: "7 Hari",  ms: 7 * 24 * 60 * 60 * 1000  },
+  { value: "30d", label: "30 Hari", ms: 30 * 24 * 60 * 60 * 1000 },
 ];
 
 export function getActiveRange(rangeValue?: string) {
@@ -89,18 +93,15 @@ export function getChartData(item: WidgetItem, logs: any[]) {
       return point;
     }
 
-    // single key (area single atau bar) — selalu { time, val }
     return { time, val: Number(l.payload?.[item.key] ?? 0) };
   });
 }
 
-/** Ambil sparkline (max 20 titik terakhir) untuk widget trend */
 export function getSparklineData(item: WidgetItem, logs: any[]) {
   const recent = logs.slice(-20);
   return recent.map((l) => ({ val: Number(l.payload?.[item.key] ?? 0) }));
 }
 
-/** Payload terbaru dari logs */
 export function getLatestPayload(logs: any[]): Record<string, any> {
   if (logs.length === 0) return {};
   const raw = logs[logs.length - 1].payload;
@@ -110,7 +111,6 @@ export function getLatestPayload(logs: any[]): Record<string, any> {
   return raw ?? {};
 }
 
-/** Cek apakah nilai dianggap ON untuk widget status */
 export function isStatusOn(value: any, onValue?: string): boolean {
   if (value === null || value === undefined) return false;
   const v = String(value).toLowerCase().trim();
@@ -118,7 +118,6 @@ export function isStatusOn(value: any, onValue?: string): boolean {
   return v === "1" || v === "true" || v === "on" || v === "yes";
 }
 
-/** Warna default per tipe widget */
 export function defaultColor(type: WidgetType): string {
   const map: Record<WidgetType, string> = {
     value:  "#3b82f6",
