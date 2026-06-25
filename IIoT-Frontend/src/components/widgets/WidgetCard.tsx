@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis,
   Tooltip, LineChart, Line,
 } from "recharts";
-import { Trash2, Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity } from "lucide-react";
+import { Trash2, Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity, Plus, X } from "lucide-react";
 import {
   WidgetItem, WIDGET_TYPES, SIZE_OPTIONS, RANGE_OPTIONS,
   getSizeClass, getActiveRange, getChartData, getSparklineData,
@@ -33,7 +33,9 @@ function formatVal(value: any, decimals?: number): string {
   return num.toFixed(decimals);
 }
 
-// ─── Props ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type KeyRow = { key: string; color: string; decimals: number };
 
 interface WidgetCardProps {
   item: WidgetItem;
@@ -109,11 +111,41 @@ function WidgetEditForm({
   const isGauge    = item.type === "gauge";
   const isTrend    = item.type === "trend";
   const isStatus   = item.type === "status";
-  const isMultiKey = item.type === "chart" && (item.keys?.length ?? 0) > 1;
 
-  const [rawKeys, setRawKeys] = React.useState<string>(
-    item.keys?.length ? item.keys.join(", ") : item.key
-  );
+  // ── Baris dinamis untuk area chart ──────────────────────────────────────
+  const initRows = (): KeyRow[] => {
+    const keys = item.keys?.length ? item.keys : (item.key ? [item.key] : [""]);
+    return keys.map((k, i) => ({
+      key:      k,
+      color:    item.colors?.[i]      ?? MULTI_COLORS[i % MULTI_COLORS.length],
+      decimals: item.keyDecimals?.[i] ?? -1,
+    }));
+  };
+
+  const [rows, setRows] = React.useState<KeyRow[]>(initRows);
+
+  const syncRows = (next: KeyRow[]) => {
+    setRows(next);
+    const isMultiRow = next.length > 1;
+    onUpdate(index, "key",         next[0]?.key ?? "");
+    onUpdate(index, "keys",        isMultiRow ? next.map((r) => r.key) : []);
+    onUpdate(index, "colors",      next.map((r) => r.color));
+    onUpdate(index, "keyDecimals", next.map((r) => r.decimals));
+  };
+
+  const addRow = () =>
+    syncRows([...rows, { key: "", color: MULTI_COLORS[rows.length % MULTI_COLORS.length], decimals: -1 }]);
+
+  const removeRow = (i: number) =>
+    syncRows(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows);
+
+  const updateRow = (i: number, field: keyof KeyRow, val: any) =>
+    syncRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+
+  const hasEmptyKey = rows.some((r) => !r.key.trim());
+  // ────────────────────────────────────────────────────────────────────────
+
+  const isMultiKey = item.type === "chart" && rows.length > 1;
 
   const inp = "w-full mt-1 bg-slate-50 dark:bg-slate-900/60 rounded-lg px-3 py-2 text-[11px] font-medium outline-none focus:ring-2 ring-blue-200 dark:ring-blue-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 placeholder:text-slate-300 dark:placeholder:text-slate-600";
   const lbl = "text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest";
@@ -177,7 +209,7 @@ function WidgetEditForm({
         </div>
       )}
 
-      {/* Unit + Size — satuan disembunyikan untuk status */}
+      {/* Unit + Size — unit disembunyikan untuk status */}
       <div className={`grid gap-2 ${isStatus ? "grid-cols-1" : "grid-cols-2"}`}>
         {!isStatus && (
           <div>
@@ -307,110 +339,99 @@ function WidgetEditForm({
         </div>
       )}
 
-      {/* Area: multi key */}
+      {/* ── Area: baris dinamis per key ────────────────────────────────────── */}
       {item.type === "chart" && (
-        <div className="space-y-3">
-          <div>
-            <label className={lbl}>MQTT Keys (pisah koma untuk multi-garis)</label>
-            <input
-              className={`${inp} font-mono text-blue-600 dark:text-blue-400`}
-              placeholder="CHWS, CHWR, INVRTR"
-              value={rawKeys}
-              onChange={(e) => {
-                const raw = e.target.value;
-                setRawKeys(raw);
-                if (raw.endsWith(",") || raw.endsWith(", ") || raw.endsWith(" ")) return;
-                const arr = raw.split(",").map((s) => s.trim()).filter(Boolean);
-                if (arr.length > 1) {
-                  onUpdate(index, "keys", arr);
-                  onUpdate(index, "key", arr[0]);
-                } else {
-                  onUpdate(index, "keys", []);
-                  onUpdate(index, "key", raw.trim());
-                }
-              }}
-            />
-            <p className="text-[9px] text-slate-400 mt-1">Contoh: CHWS, CHWR — akan jadi 2 garis berbeda</p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className={lbl}>MQTT Keys</label>
+            <button
+              onClick={addRow}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer bg-transparent"
+            >
+              <Plus className="w-3 h-3" />
+              Tambah Garis
+            </button>
           </div>
 
-          {/* Color + Decimal per key — hanya muncul jika multi key */}
-          {isMultiKey && (
-            <div className="space-y-3">
-              <div>
-                <label className={lbl}>Warna Per Garis</label>
-                <div className="space-y-2 mt-1.5">
-                  {item.keys!.map((k, i) => (
-                    <div key={k} className="flex items-center gap-2">
-                      <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 w-16 truncate shrink-0">{k}</span>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316"].map((c) => {
-                          const isSelected = (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) === c;
-                          return (
-                            <button
-                              key={c}
-                              onClick={() => {
-                                const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
-                                updated[i] = c;
-                                onUpdate(index, "colors", updated);
-                              }}
-                              className={`w-4 h-4 rounded-full border-2 transition-all cursor-pointer ${isSelected ? "border-slate-600 scale-110" : "border-transparent"}`}
-                              style={{ backgroundColor: c }}
-                            />
-                          );
-                        })}
-                        <input
-                          type="color"
-                          value={item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]}
-                          onChange={(e) => {
-                            const updated = [...(item.colors ?? item.keys!.map((_, idx) => MULTI_COLORS[idx % MULTI_COLORS.length]))];
-                            updated[i] = e.target.value;
-                            onUpdate(index, "colors", updated);
-                          }}
-                          className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Decimal per key */}
-              <div>
-                <label className={lbl}>Desimal Per Garis</label>
-                <div className="space-y-2 mt-1.5">
-                  {item.keys!.map((k, i) => (
-                    <div key={k} className="flex items-center gap-2">
-                      <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 w-16 truncate shrink-0">{k}</span>
-                      <div className="flex gap-1 flex-wrap">
-                        {DECIMAL_OPTIONS.map((d) => {
-                          const current = item.keyDecimals?.[i] ?? -1;
-                          return (
-                            <button
-                              key={d.value}
-                              onClick={() => {
-                                const updated = [...(item.keyDecimals ?? item.keys!.map(() => -1))];
-                                updated[i] = d.value;
-                                onUpdate(index, "keyDecimals", updated);
-                              }}
-                              className={`px-2 py-0.5 rounded-md text-[9px] font-black border transition-all cursor-pointer ${
-                                current === d.value
-                                  ? "bg-blue-500 border-blue-500 text-white"
-                                  : "bg-transparent border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300"
-                              }`}
-                            >
-                              {d.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          {/* Validasi: warning jika ada key kosong */}
+          {hasEmptyKey && (
+            <p className="text-[9px] text-amber-500 font-bold">⚠ Isi semua MQTT key sebelum menutup form</p>
           )}
+
+          <div className="space-y-2">
+            {rows.map((row, i) => (
+              <div
+                key={i}
+                className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2.5 space-y-2"
+              >
+                {/* Header baris: nomor + tombol hapus */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                    Garis {i + 1}
+                  </span>
+                  {rows.length > 1 && (
+                    <button
+                      onClick={() => removeRow(i)}
+                      className="p-0.5 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* MQTT Key input */}
+                <input
+                  className={`w-full bg-white dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-medium outline-none focus:ring-2 ring-blue-200 dark:ring-blue-800 text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-600 placeholder:text-slate-300 dark:placeholder:text-slate-600 ${
+                    !row.key.trim() ? "border-amber-300 dark:border-amber-700" : ""
+                  }`}
+                  placeholder="CHWS"
+                  value={row.key}
+                  onChange={(e) => updateRow(i, "key", e.target.value)}
+                />
+
+                {/* Warna + Desimal dalam satu baris */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Color swatches */}
+                  <div className="flex items-center gap-1">
+                    {["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316"].map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => updateRow(i, "color", c)}
+                        className={`w-4 h-4 rounded-full border-2 transition-all cursor-pointer ${row.color === c ? "border-slate-600 scale-110" : "border-transparent"}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={row.color}
+                      onChange={(e) => updateRow(i, "color", e.target.value)}
+                      className="w-4 h-4 rounded-full cursor-pointer border-0 p-0 bg-transparent"
+                    />
+                  </div>
+
+                  {/* Decimal buttons */}
+                  <div className="flex gap-1 ml-auto">
+                    {DECIMAL_OPTIONS.map((d) => (
+                      <button
+                        key={d.value}
+                        onClick={() => updateRow(i, "decimals", d.value)}
+                        className={`px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer ${
+                          row.decimals === d.value
+                            ? "bg-blue-500 border-blue-500 text-white"
+                            : "bg-transparent border-slate-200 dark:border-slate-600 text-slate-400 hover:border-slate-300"
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
+      {/* ─────────────────────────────────────────────────────────────────── */}
 
       {/* Range — untuk semua chart */}
       {isChart && (
@@ -609,13 +630,10 @@ function AreaDisplay({ data, color, item }: {
 
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
 
-  const getColor = (i: number) => {
-    if (!isMulti) return color;
-    return item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length];
-  };
+  const getColor = (i: number) =>
+    isMulti ? (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) : color;
 
   const getDecimals = (i: number): number | undefined => {
-    if (!isMulti) return undefined;
     const d = item.keyDecimals?.[i] ?? -1;
     return d < 0 ? undefined : d;
   };
@@ -632,7 +650,10 @@ function AreaDisplay({ data, color, item }: {
               </linearGradient>
             ))}
           </defs>
-          <XAxis dataKey="_idx" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false}
+          <XAxis
+            dataKey="_idx"
+            tick={{ fontSize: 8, fill: "#94a3b8" }}
+            tickLine={false} axisLine={false}
             tickFormatter={(idx) => indexed[idx]?.time ?? ""}
             interval="preserveStartEnd"
           />
@@ -640,18 +661,12 @@ function AreaDisplay({ data, color, item }: {
           <Tooltip
             allowEscapeViewBox={{ x: false, y: false }}
             contentStyle={{
-              fontSize: "10px",
-              fontWeight: 700,
-              borderRadius: "10px",
-              border: "1px solid #e2e8f0",
-              padding: "6px 10px",
-              backgroundColor: "#fff",
+              fontSize: "10px", fontWeight: 700, borderRadius: "10px",
+              border: "1px solid #e2e8f0", padding: "6px 10px", backgroundColor: "#fff",
             }}
-            formatter={(value: any, name: string, props: any) => {
-              // cari index key untuk ambil decimals yang sesuai
+            formatter={(value: any, name: string) => {
               const keyIdx = isMulti ? keys.indexOf(name) : 0;
-              const dec    = getDecimals(keyIdx);
-              return [formatVal(value, dec), isMulti ? name : item.key];
+              return [formatVal(value, getDecimals(keyIdx)), isMulti ? name : item.key];
             }}
             labelFormatter={(idx) => indexed[Number(idx)]?.time ?? ""}
             labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
@@ -684,7 +699,10 @@ function BarDisplay({ data, color }: { data: { time: string; val: number }[]; co
     <div className="h-36 w-full mt-2">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={indexed} margin={{ top: 4, right: 4, left: -24, bottom: 0 }} barCategoryGap="25%">
-          <XAxis dataKey="_idx" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false}
+          <XAxis
+            dataKey="_idx"
+            tick={{ fontSize: 8, fill: "#94a3b8" }}
+            tickLine={false} axisLine={false}
             tickFormatter={(idx) => indexed[idx]?.time ?? ""}
             interval="preserveStartEnd"
           />
