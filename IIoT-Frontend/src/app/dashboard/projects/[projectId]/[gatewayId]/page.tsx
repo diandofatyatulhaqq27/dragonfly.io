@@ -426,66 +426,8 @@ export default function GatewayDetailPage() {
               </GridLayout>
             )}
           </div>
-
-          {/* ── SIDEBAR — hanya tampil saat edit mode ────────────────────── */}
-            {isEditMode && (
-              <div className="shrink-0 w-52">
-                <div className="sticky top-20">
-                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 text-center">
-                    <Pencil className="w-5 h-5 text-blue-400 mx-auto mb-2" />
-                    <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">
-                      {selectedItem !== null ? "Panel dipilih ✓" : "Klik panel untuk setting"}
-                    </p>
-                    <p className="text-[9px] text-blue-400 mt-1">
-                      Setting muncul sebagai panel melayang yang bisa digeser.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-              {/* Meta panel */}
-              <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span className="text-[8px] font-black uppercase tracking-[0.2em]">Meta Properties</span>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Link Status</label>
-                  <div className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border w-fit ${
-                    isOnline
-                      ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border-emerald-100"
-                      : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 border-rose-100"
-                  }`}>
-                    ● {isOnline ? "Online" : "Offline"}
-                  </div>
-                </div>
-                {devices.length > 0 && (
-                  <div className="space-y-1.5">
-                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Registered Devices</label>
-                    <div className="space-y-1">
-                      {devices.map((dv) => (
-                        <div key={dv.device_id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 px-2.5 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
-                          <span className="text-[9px] font-black text-slate-700 dark:text-slate-300 uppercase truncate">{dv.name}</span>
-                          <span className="text-[8px] font-mono text-slate-400 ml-2 shrink-0">{dv.unit}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Last Ping</label>
-                  <p className="text-[9px] font-mono font-bold text-slate-600 dark:text-slate-400">
-                    {gatewayInfo?.last_ping ? new Date(gatewayInfo.last_ping).toLocaleString("id-ID") : "— Belum ada data —"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Log Records</label>
-                  <p className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{logs.length}</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
+      </div>
+    </div>
   );
 }
