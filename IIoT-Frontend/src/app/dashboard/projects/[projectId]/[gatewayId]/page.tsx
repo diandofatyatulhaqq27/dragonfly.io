@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
-  Save, ArrowLeft, Plus, LayoutGrid, Loader2,
+  ArrowLeft, Plus, LayoutGrid, Loader2,
   ChevronLeft, ChevronRight, Cpu, Pencil, X, Check,
 } from "lucide-react";
 import ReactGridLayout from "react-grid-layout";
@@ -15,13 +15,8 @@ import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard
 
 // ─── Grid config ─────────────────────────────────────────────────────────────
 const COLS  = 12;
-const ROW_H = 80; // px per row unit
+const ROW_H = 80;
 const GridLayout = ReactGridLayout as any;
-
-function itemToLayout(item: WidgetItem, index: number): RGLLayout {
-  const gp = item.gridPos ?? defaultGridPos(item.type, index);
-  return { i: String(index), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 1, minH: 1 };
-}
 
 type RGLLayout = {
   i: string;
@@ -32,6 +27,11 @@ type RGLLayout = {
   minW?: number;
   minH?: number;
 };
+
+function itemToLayout(item: WidgetItem, index: number): RGLLayout {
+  const gp = item.gridPos ?? defaultGridPos(item.type, index);
+  return { i: String(index), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 1, minH: 1 };
+}
 
 export default function GatewayDetailPage() {
   const router = useRouter();
@@ -49,7 +49,44 @@ export default function GatewayDetailPage() {
   const [layouts,         setLayouts]         = useState<RGLLayout[]>([]);
   const [containerWidth,  setContainerWidth]  = useState(1200);
 
+  // ── Floating panel state ──────────────────────────────────────────────────
+  const [panelPos,        setPanelPos]        = useState({ x: 100, y: 80 });
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const dragOffset = React.useRef({ x: 0, y: 0 });
+
   const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
+
+  // Set posisi awal floating panel setelah mount
+  useEffect(() => {
+    setPanelPos({ x: window.innerWidth - 320, y: 80 });
+  }, []);
+
+  // Drag handler untuk floating panel
+  const onPanelMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingPanel(true);
+    dragOffset.current = {
+      x: e.clientX - panelPos.x,
+      y: e.clientY - panelPos.y,
+    };
+  };
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingPanel) return;
+      setPanelPos({
+        x: Math.max(0, Math.min(window.innerWidth - 300, e.clientX - dragOffset.current.x)),
+        y: Math.max(0, Math.min(window.innerHeight - 100, e.clientY - dragOffset.current.y)),
+      });
+    };
+    const onUp = () => setIsDraggingPanel(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDraggingPanel]);
 
   // Track container width for responsive grid
   const gridRef = React.useRef<HTMLDivElement>(null);
@@ -113,8 +150,6 @@ export default function GatewayDetailPage() {
     return (Date.now() - new Date(gatewayInfo.last_ping).getTime()) / 1000 < 60;
   })();
 
-  // ── Layout sync helpers ───────────────────────────────────────────────────
-
   const onLayoutChange = (newLayout: RGLLayout[]) => {
     setLayouts(newLayout);
     setEditConfig((prev) => prev.map((item, i) => {
@@ -124,8 +159,6 @@ export default function GatewayDetailPage() {
     }));
   };
 
-  // ── Widget CRUD ───────────────────────────────────────────────────────────
-
   const addWidget = () => {
     if (isReadOnly) return;
     const newItem: WidgetItem = { key: "", label: "", type: "value", unit: "", size: "small", range: "1h" };
@@ -133,7 +166,7 @@ export default function GatewayDetailPage() {
     const gp = defaultGridPos("value", newIdx);
     newItem.gridPos = gp;
     const newConfig  = [...editConfig, newItem];
-    const newLayouts: RGLLayout[] = [...layouts, { i: String(newIdx), ...gp, minW: 2, minH: 2 }];
+    const newLayouts: RGLLayout[] = [...layouts, { i: String(newIdx), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 1, minH: 1 }];
     setEditConfig(newConfig);
     setLayouts(newLayouts);
     setSelectedIdx(newIdx);
@@ -158,8 +191,6 @@ export default function GatewayDetailPage() {
     });
   };
 
-  // ── Save ──────────────────────────────────────────────────────────────────
-
   const handleSaveConfig = async () => {
     if (isReadOnly) return alert("Akses ditolak!");
     try {
@@ -171,7 +202,6 @@ export default function GatewayDetailPage() {
           name:       gatewayInfo?.name ?? "",
           hmi_code:   gatewayInfo?.hmi_code ?? null,
           project_id: Number(projectId),
-          company_id: gatewayInfo?.company_id ?? null,
           status:     gatewayInfo?.status ?? "offline",
           config:     editConfig,
         }),
@@ -190,19 +220,16 @@ export default function GatewayDetailPage() {
   const exitEditMode = () => {
     setIsEditMode(false);
     setSelectedIdx(null);
-    // revert unsaved
     const cfg: WidgetItem[] = gatewayInfo?.config ?? [];
     setEditConfig(cfg);
     setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
   };
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-
   if (loading && !gatewayInfo) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        <p className="mt-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Syncing telemetry...</p>
+        <p className="mt-3 text-[9px] font-black text-slateate-400 uppercase tracking-widest">Syncing telemetry...</p>
       </div>
     );
   }
@@ -212,6 +239,49 @@ export default function GatewayDetailPage() {
 
   return (
     <div className="bg-slate-50 dark:bg-slate-900 min-h-screen font-sans text-slate-900 dark:text-slate-100">
+
+      {/* ── FLOATING SETTINGS PANEL ───────────────────────────────────────── */}
+      {isEditMode && selectedItem !== null && selectedIdx !== null && (
+        <div
+          className="fixed z-[100] w-72 bg-white dark:bg-slate-800 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-2xl flex flex-col"
+          style={{
+            left:      panelPos.x,
+            top:       panelPos.y,
+            maxHeight: "calc(100vh - 100px)",
+          }}
+        >
+          {/* Drag handle */}
+          <div
+            onMouseDown={onPanelMouseDown}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white cursor-grab active:cursor-grabbing shrink-0 select-none rounded-t-2xl"
+          >
+            <div className="flex gap-0.5 shrink-0">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="w-0.5 h-3 bg-white/40 rounded-full" />
+              ))}
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-widest flex-1 text-center">
+              Panel Settings
+            </span>
+            <button
+              onClick={() => setSelectedIdx(null)}
+              className="p-0.5 hover:bg-white/20 rounded transition-colors border-none bg-transparent text-white cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-hidden">
+            <WidgetSettingsPanel
+              item={selectedItem}
+              index={selectedIdx}
+              onUpdate={updateWidget}
+              onRemove={removeWidget}
+              onClose={() => setSelectedIdx(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── EDIT MODE TOP BAR ─────────────────────────────────────────────── */}
       {isEditMode && (
@@ -274,7 +344,8 @@ export default function GatewayDetailPage() {
           <div className="flex items-center gap-3">
             {projectGateways.length > 1 && (
               <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 rounded-xl shadow-sm h-9">
-                <button onClick={() => currentIndex > 0 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex-1].gateway_id ?? projectGateways[currentIndex-1].id}`)}
+                <button
+                  onClick={() => currentIndex > 0 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex-1].gateway_id ?? projectGateways[currentIndex-1].id}`)}
                   disabled={currentIndex <= 0}
                   className="p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer transition-all border-none bg-transparent text-slate-700 dark:text-slate-300 h-full flex items-center">
                   <ChevronLeft className="w-3.5 h-3.5" />
@@ -282,7 +353,8 @@ export default function GatewayDetailPage() {
                 <div className="px-1 flex items-center gap-1 text-slate-700 dark:text-slate-300 font-black text-[9px] uppercase tracking-wider italic whitespace-nowrap">
                   <Cpu className="w-3 h-3 text-blue-500" /> Node {currentIndex + 1} / {projectGateways.length}
                 </div>
-                <button onClick={() => currentIndex < projectGateways.length - 1 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex+1].gateway_id ?? projectGateways[currentIndex+1].id}`)}
+                <button
+                  onClick={() => currentIndex < projectGateways.length - 1 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex+1].gateway_id ?? projectGateways[currentIndex+1].id}`)}
                   disabled={currentIndex >= projectGateways.length - 1}
                   className="p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer transition-all border-none bg-transparent text-slate-700 dark:text-slate-300 h-full flex items-center">
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -290,7 +362,6 @@ export default function GatewayDetailPage() {
               </div>
             )}
 
-            {/* Tombol edit — subtle icon-only saat tidak aktif */}
             {!isReadOnly && !isEditMode && (
               <button onClick={() => setIsEditMode(true)}
                 title="Edit Layout"
@@ -301,10 +372,10 @@ export default function GatewayDetailPage() {
           </div>
         </div>
 
-        {/* ── MAIN AREA (grid + sidebar) ────────────────────────────────────── */}
+        {/* ── MAIN AREA ────────────────────────────────────────────────────── */}
         <div className="flex gap-5">
 
-         {/* ── GRID AREA ─────────────────────────────────────────────────── */}
+          {/* ── GRID AREA ─────────────────────────────────────────────────── */}
           <div className={`flex-1 min-w-0 ${isEditMode ? "edit-mode" : ""}`} ref={gridRef}>
             {editConfig.length === 0 ? (
               <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-12 text-center">
@@ -332,7 +403,9 @@ export default function GatewayDetailPage() {
                     {isEditMode && (
                       <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
                         <div className="flex gap-0.5">
-                          {[...Array(6)].map((_, i) => <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />)}
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />
+                          ))}
                         </div>
                       </div>
                     )}
@@ -352,45 +425,29 @@ export default function GatewayDetailPage() {
             )}
           </div>
 
+          {/* ── SIDEBAR — hanya meta properties, muncul saat edit mode ──── */}
           <div className={`shrink-0 transition-all duration-300 overflow-hidden ${
-              !isEditMode
-                ? "w-0 opacity-0 pointer-events-none"
-                : selectedItem !== null
-                ? "w-72 opacity-100"
-                : "w-56 opacity-100"
-            }`}>
-
+            !isEditMode ? "w-0 opacity-0 pointer-events-none" : "w-52 opacity-100"
+          }`}>
             <div className="sticky top-20 space-y-3">
 
-              {/* Settings panel — muncul saat panel dipilih */}
-              {isEditMode && selectedItem !== null && selectedIdx !== null && (
-                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-lg overflow-hidden max-h-[calc(100vh-10rem)] flex flex-col">
-                  <WidgetSettingsPanel
-                    item={selectedItem}
-                    index={selectedIdx}
-                    onUpdate={updateWidget}
-                    onRemove={removeWidget}
-                    onClose={() => setSelectedIdx(null)}
-                  />
-                </div>
-              )}
+              {/* Edit hint */}
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 text-center">
+                <Pencil className="w-5 h-5 text-blue-400 mx-auto mb-2" />
+                <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">
+                  {selectedItem !== null ? "Panel dipilih ✓" : "Klik panel untuk setting"}
+                </p>
+                <p className="text-[9px] text-blue-400 mt-1">
+                  Setting muncul sebagai panel melayang yang bisa digeser.
+                </p>
+              </div>
 
-              {/* Edit mode hint saat belum pilih panel */}
-              {isEditMode && selectedItem === null && (
-                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 text-center">
-                  <Pencil className="w-5 h-5 text-blue-400 mx-auto mb-2" />
-                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">Klik panel untuk setting</p>
-                  <p className="text-[9px] text-blue-400 mt-1">Drag panel untuk pindah posisi. Tarik pojok kanan bawah untuk resize.</p>
-                </div>
-              )}
-
-              {/* Meta panel — selalu tampil */}
+              {/* Meta panel */}
               <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
                 <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
                   <LayoutGrid className="w-3.5 h-3.5" />
                   <span className="text-[8px] font-black uppercase tracking-[0.2em]">Meta Properties</span>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Link Status</label>
                   <div className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border w-fit ${
@@ -401,7 +458,6 @@ export default function GatewayDetailPage() {
                     ● {isOnline ? "Online" : "Offline"}
                   </div>
                 </div>
-
                 {devices.length > 0 && (
                   <div className="space-y-1.5">
                     <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Registered Devices</label>
@@ -415,14 +471,12 @@ export default function GatewayDetailPage() {
                     </div>
                   </div>
                 )}
-
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Last Ping</label>
                   <p className="text-[9px] font-mono font-bold text-slate-600 dark:text-slate-400">
                     {gatewayInfo?.last_ping ? new Date(gatewayInfo.last_ping).toLocaleString("id-ID") : "— Belum ada data —"}
                   </p>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Log Records</label>
                   <p className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{logs.length}</p>
