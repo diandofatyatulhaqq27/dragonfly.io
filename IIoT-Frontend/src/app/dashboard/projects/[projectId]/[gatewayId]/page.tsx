@@ -5,7 +5,7 @@ import {
   Save, ArrowLeft, Plus, LayoutGrid, Loader2,
   ChevronLeft, ChevronRight, Cpu, Pencil, X, Check,
 } from "lucide-react";
-import GridLayout, { Layout } from "react-grid-layout";
+import ReactGridLayout from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
@@ -16,11 +16,22 @@ import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard
 // ─── Grid config ─────────────────────────────────────────────────────────────
 const COLS  = 12;
 const ROW_H = 80; // px per row unit
+const GridLayout = ReactGridLayout as any;
 
-function itemToLayout(item: WidgetItem, index: number): Layout {
+function itemToLayout(item: WidgetItem, index: number): RGLLayout {
   const gp = item.gridPos ?? defaultGridPos(item.type, index);
   return { i: String(index), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 2, minH: 2 };
 }
+
+type RGLLayout = {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minW?: number;
+  minH?: number;
+};
 
 export default function GatewayDetailPage() {
   const router = useRouter();
@@ -35,7 +46,7 @@ export default function GatewayDetailPage() {
   const [isEditMode,      setIsEditMode]      = useState(false);
   const [editConfig,      setEditConfig]      = useState<WidgetItem[]>([]);
   const [selectedIdx,     setSelectedIdx]     = useState<number | null>(null);
-  const [layouts,         setLayouts]         = useState<Layout[]>([]);
+  const [layouts,         setLayouts]         = useState<RGLLayout[]>([]);
   const [containerWidth,  setContainerWidth]  = useState(1200);
 
   const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
@@ -104,7 +115,7 @@ export default function GatewayDetailPage() {
 
   // ── Layout sync helpers ───────────────────────────────────────────────────
 
-  const onLayoutChange = (newLayout: Layout[]) => {
+  const onLayoutChange = (newLayout: RGLLayout[]) => {
     setLayouts(newLayout);
     setEditConfig((prev) => prev.map((item, i) => {
       const l = newLayout.find((n) => n.i === String(i));
@@ -122,7 +133,7 @@ export default function GatewayDetailPage() {
     const gp = defaultGridPos("value", newIdx);
     newItem.gridPos = gp;
     const newConfig  = [...editConfig, newItem];
-    const newLayouts = [...layouts, { i: String(newIdx), ...gp, minW: 2, minH: 2 }];
+    const newLayouts: RGLLayout[] = [...layouts, { i: String(newIdx), ...gp, minW: 2, minH: 2 }];
     setEditConfig(newConfig);
     setLayouts(newLayouts);
     setSelectedIdx(newIdx);
@@ -304,13 +315,13 @@ export default function GatewayDetailPage() {
               </div>
             ) : (
               <GridLayout
-                layout={layouts}
+                layout={layouts as any}
                 cols={COLS}
                 rowHeight={ROW_H}
                 width={containerWidth}
                 isDraggable={isEditMode}
                 isResizable={isEditMode}
-                onLayoutChange={onLayoutChange}
+                onLayoutChange={(newLayout: any) => onLayoutChange(newLayout)}
                 draggableHandle=".drag-handle"
                 margin={[12, 12]}
                 containerPadding={[0, 0]}
