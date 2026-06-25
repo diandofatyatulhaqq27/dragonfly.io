@@ -14,8 +14,8 @@ import { WidgetItem, getLatestPayload, defaultGridPos } from "@/lib/widget-confi
 import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard";
 
 // ─── Grid config ─────────────────────────────────────────────────────────────
-const COLS  = 5;
-const ROW_H = 5;
+const COLS  = 80;
+const ROW_H = 80;
 const GridLayout = ReactGridLayout as any;
 
 type RGLLayout = {
