@@ -20,7 +20,6 @@ export interface WidgetItem {
   keys?: string[];
   colors?: string[];
   keyDecimals?: number[];
-  /** Pembagi nilai per key untuk area chart multi-key */
   keyDivisors?: number[];
   label: string;
   type: WidgetType;
@@ -31,19 +30,8 @@ export interface WidgetItem {
   max?: number;
   onValue?: string;
   color?: string;
-  /**
-   * Pembagi nilai raw dari sensor.
-   * Contoh: raw=300, divisor=10 → nilai tampil = 30
-   * Default: 1 (tidak dibagi)
-   */
+  offColor?: string;
   divisor?: number;
-  /**
-   * Jumlah digit desimal yang ditampilkan setelah dibagi.
-   * -1 = Auto (tampil apa adanya)
-   *  0 = bulat
-   *  1 = 0.0
-   *  2 = 0.00
-   */
   decimalPlaces?: number;
   thresholds?: ThresholdItem[];
   gridPos?: GridPos;
@@ -67,13 +55,6 @@ export const WIDGET_TYPES: {
 ];
 
 // ─── Value transform helper ───────────────────────────────────────────────────
-
-/**
- * Terapkan divisor lalu format ke decimalPlaces.
- * Contoh: applyTransform(300, 10, 1) → "30.0"
- *         applyTransform(300, 1, -1)  → "300"
- *         applyTransform(300, 10, 0)  → "30"
- */
 export function applyTransform(
   value: any,
   divisor?: number,
@@ -93,10 +74,6 @@ export function applyTransform(
   return result.toFixed(decimalPlaces);
 }
 
-/**
- * Terapkan divisor ke nilai numerik (tanpa format string).
- * Dipakai untuk kalkulasi threshold, gauge fill, dll.
- */
 export function applyDivisor(value: any, divisor?: number): number {
   const num = Number(value ?? 0);
   if (isNaN(num)) return 0;
@@ -149,9 +126,6 @@ export function getActiveRange(rangeValue?: string) {
 
 // ─── Threshold ────────────────────────────────────────────────────────────────
 
-/**
- * Threshold dibandingkan terhadap nilai SETELAH dibagi divisor.
- */
 export function resolveThresholdColor(
   value: any,
   thresholds: ThresholdItem[] | undefined,
