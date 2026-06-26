@@ -49,8 +49,6 @@ interface WidgetCardProps {
   onSelect: (index: number) => void;
 }
 
-// ─── Icon map ────────────────────────────────────────────────────────────────
-
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   "hash":        <Hash className="w-4 h-4" />,
   "trending-up": <TrendingUp className="w-4 h-4" />,
@@ -69,26 +67,24 @@ export function WidgetCard({
   const color       = item.color ?? defaultColor(item.type);
   const activeColor = resolveThresholdColor(latestPayload[item.key], item.thresholds, color);
 
-  const chartData = useMemo(() => isChart ? getChartData(item, logs) : [], [item, logs, isChart]);
-  const sparkData = useMemo(() => item.type === "trend" ? getSparklineData(item, logs) : [], [item, logs]);
+  const chartData   = useMemo(() => isChart ? getChartData(item, logs) : [], [item, logs, isChart]);
+  const sparkData   = useMemo(() => item.type === "trend" ? getSparklineData(item, logs) : [], [item, logs]);
   const latestValue = latestPayload[item.key];
-
-  const handleClick = () => { if (isEditMode) onSelect(index); };
 
   return (
     <div
-      onClick={handleClick}
+      onClick={() => { if (isEditMode) onSelect(index); }}
       className={`rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col h-full bg-white dark:bg-slate-800 ${
         isEditMode
           ? isSelected
             ? "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700 shadow-xl cursor-pointer"
-            : "border-slate-300 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-700 cursor-pointer hover:shadow-md"
+            : "border-slate-300 dark:border-slate-600 hover:border-blue-300 cursor-pointer hover:shadow-md"
           : "border-slate-200 dark:border-slate-700 shadow-sm"
       }`}
     >
       {/* Edit mode badge */}
       {isEditMode && (
-        <div className={`flex items-center gap-1 px-3 py-1 text-[8px] font-black uppercase tracking-widest border-b ${
+        <div className={`flex items-center gap-1 px-3 py-1 text-[8px] font-black uppercase tracking-widest border-b shrink-0 ${
           isSelected
             ? "bg-blue-500 text-white border-blue-500"
             : "bg-slate-50 dark:bg-slate-900/50 text-slate-400 border-slate-100 dark:border-slate-700"
@@ -98,15 +94,18 @@ export function WidgetCard({
         </div>
       )}
 
-      <WidgetDisplay
-        item={item}
-        isOnline={isOnline}
-        color={activeColor}
-        latestValue={latestValue}
-        chartData={chartData}
-        sparkData={sparkData}
-        activeRangeLabel={getActiveRange(item.range).label}
-      />
+      {/* Content — flex-1 agar mengisi sisa tinggi kartu */}
+      <div className="flex-1 min-h-0">
+        <WidgetDisplay
+          item={item}
+          isOnline={isOnline}
+          color={activeColor}
+          latestValue={latestValue}
+          chartData={chartData}
+          sparkData={sparkData}
+          activeRangeLabel={getActiveRange(item.range).label}
+        />
+      </div>
     </div>
   );
 }
@@ -119,43 +118,58 @@ function WidgetDisplay({
   item: WidgetItem; isOnline: boolean; color: string; latestValue: any;
   chartData: any[]; sparkData: { val: number }[]; activeRangeLabel: string;
 }) {
+  const isChart = item.type === "chart" || item.type === "bar";
+
   return (
-    <div className="p-4 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-2">
+    // h-full + flex col agar konten bisa stretch dan di-center
+    <div className="h-full flex flex-col p-4">
+      {/* Label bar — selalu di atas */}
+      <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? "animate-pulse" : ""}`}
-            style={{ backgroundColor: isOnline ? "#10b981" : "#f87171" }} />
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? "animate-pulse" : ""}`}
+            style={{ backgroundColor: isOnline ? "#10b981" : "#f87171" }}
+          />
           <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">
             {item.label || "SENSOR"}
           </span>
         </div>
-        {(item.type === "chart" || item.type === "bar") && (
+        {isChart && (
           <span className="text-[8px] font-black uppercase text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-900/40 px-1.5 py-0.5 rounded-md shrink-0 ml-2">
             {activeRangeLabel}
           </span>
         )}
       </div>
 
-      {item.type === "value"  && <ValueDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} />}
-      {item.type === "trend"  && <TrendDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} sparkData={sparkData} decimals={item.decimals} />}
-      {item.type === "gauge"  && <GaugeDisplay  value={latestValue} unit={item.unit} color={color} min={item.min ?? 0} max={item.max ?? 100} decimals={item.decimals} />}
-      {item.type === "status" && <StatusDisplay value={latestValue} label={item.label} color={color} onValue={item.onValue} isOnline={isOnline} />}
-      {item.type === "chart"  && <AreaDisplay   data={chartData} color={color} item={item} />}
-      {item.type === "bar"    && <BarDisplay    data={chartData} color={color} />}
+      {/* Content area — flex-1, center secara vertikal */}
+      <div className="flex-1 flex items-center justify-center min-h-0">
+        {item.type === "value"  && <ValueDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} />}
+        {item.type === "trend"  && <TrendDisplay  value={latestValue} unit={item.unit} color={color} isOnline={isOnline} sparkData={sparkData} decimals={item.decimals} />}
+        {item.type === "gauge"  && <GaugeDisplay  value={latestValue} unit={item.unit} color={color} min={item.min ?? 0} max={item.max ?? 100} decimals={item.decimals} />}
+        {item.type === "status" && <StatusDisplay value={latestValue} label={item.label} color={color} onValue={item.onValue} isOnline={isOnline} />}
+        {item.type === "chart"  && <AreaDisplay   data={chartData} color={color} item={item} />}
+        {item.type === "bar"    && <BarDisplay    data={chartData} color={color} />}
+      </div>
     </div>
   );
 }
 
 // ─── VALUE ───────────────────────────────────────────────────────────────────
 
-function ValueDisplay({ value, unit, color, isOnline }: { value: any; unit?: string; color: string; isOnline: boolean }) {
+function ValueDisplay({ value, unit, color, isOnline }: {
+  value: any; unit?: string; color: string; isOnline: boolean;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
-      <span className={`text-6xl font-black tracking-tighter transition-all ${isOnline ? "" : "opacity-25"}`}
-        style={{ color: isOnline ? color : undefined }}>
+    <div className="flex flex-col items-center gap-1">
+      <span
+        className={`text-5xl font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
+        style={{ color: isOnline ? color : undefined }}
+      >
         {value ?? "—"}
       </span>
-      {unit && <span className="text-sm font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>}
+      {unit && (
+        <span className="text-sm font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>
+      )}
     </div>
   );
 }
@@ -171,10 +185,12 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData, decimals }: {
   const delta = prev !== null ? curr - prev : null;
 
   return (
-    <div className="flex flex-col gap-1 mt-auto">
+    <div className="w-full flex flex-col items-center gap-1">
       <div className="flex items-baseline gap-1.5">
-        <span className={`text-5xl font-black tracking-tighter ${isOnline ? "" : "opacity-25"}`}
-          style={{ color: isOnline ? color : undefined }}>
+        <span
+          className={`text-5xl font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
+          style={{ color: isOnline ? color : undefined }}
+        >
           {formatVal(value, decimals)}
         </span>
         {unit && <span className="text-sm font-black text-slate-400">{unit}</span>}
@@ -185,7 +201,7 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData, decimals }: {
         )}
       </div>
       {sparkData.length > 1 && (
-        <div style={{ height: 40 }}>
+        <div className="w-full" style={{ height: 36 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkData}>
               <Line type="monotone" dataKey="val" stroke={color} strokeWidth={2} dot={false} />
@@ -198,6 +214,9 @@ function TrendDisplay({ value, unit, color, isOnline, sparkData, decimals }: {
 }
 
 // ─── GAUGE ───────────────────────────────────────────────────────────────────
+//
+// Fix: viewBox diperbesar ke "0 0 120 90" dan semua koordinat digeser
+// agar arc tidak terpotong di pojok kiri bawah maupun kanan bawah.
 
 function GaugeDisplay({ value, unit, color, min, max, decimals }: {
   value: any; unit?: string; color: string; min: number; max: number; decimals?: number;
@@ -205,11 +224,18 @@ function GaugeDisplay({ value, unit, color, min, max, decimals }: {
   const num = Number(value ?? min);
   const pct = Math.min(1, Math.max(0, (num - min) / (max - min)));
 
-  const R = 38; const cx = 55; const cy = 55;
+  // Pusat arc sedikit lebih ke atas agar ada ruang untuk label min/max di bawah
+  const R  = 40;
+  const cx = 60;
+  const cy = 58; // lebih tinggi dari center biar tidak kepotong bawah
+
   const toRad = (d: number) => (d * Math.PI) / 180;
   const arcX  = (d: number) => cx + R * Math.cos(toRad(d));
   const arcY  = (d: number) => cy + R * Math.sin(toRad(d));
-  const startDeg = 135; const endDeg = 45;
+
+  // Arc mulai dari 135° (kiri bawah) ke 45° (kanan bawah), total 270°
+  const startDeg = 135;
+  const endDeg   = 45;
   const fillDeg  = startDeg + pct * 270;
 
   const bgPath   = `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 1 1 ${arcX(endDeg)} ${arcY(endDeg)}`;
@@ -218,17 +244,54 @@ function GaugeDisplay({ value, unit, color, min, max, decimals }: {
     : null;
 
   return (
-    <div className="flex flex-col items-center mt-1">
-      <svg
-        viewBox="0 0 110 80"
-        className="w-full max-w-[140px]"
+    <div className="w-full flex flex-col items-center">
+      {/* viewBox: 0 0 120 90 — cukup lebar & tinggi agar arc tidak terpotong */}
+      <svg viewBox="0 0 120 90" className="w-full max-w-[180px]">
+        {/* Track */}
+        <path
+          d={bgPath}
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth="7"
+          strokeLinecap="round"
+          className="dark:stroke-slate-700"
+        />
+        {/* Fill */}
+        {fillPath && (
+          <path
+            d={fillPath}
+            fill="none"
+            stroke={color}
+            strokeWidth="7"
+            strokeLinecap="round"
+            style={{ transition: "stroke 0.4s ease" }}
+          />
+        )}
+        {/* Nilai tengah */}
+        <text
+          x={cx} y={cy + 8}
+          textAnchor="middle"
+          fontSize="18"
+          fontWeight="900"
+          fill={color}
+          style={{ transition: "fill 0.4s ease" }}
         >
-        <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round" className="dark:stroke-slate-700" />
-        {fillPath && <path d={fillPath} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" />}
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="20" fontWeight="900" fill={color}>{formatVal(value, decimals)}</text>
-        {unit && <text x={cx} y={cy + 26} textAnchor="middle" fontSize="10" fontWeight="700" fill="#94a3b8">{unit}</text>}
-        <text x="10" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1">{min}</text>
-        <text x="92" y="76" fontSize="8" fontWeight="700" fill="#cbd5e1" textAnchor="end">{max}</text>
+          {formatVal(value, decimals)}
+        </text>
+        {/* Satuan */}
+        {unit && (
+          <text x={cx} y={cy + 23} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">
+            {unit}
+          </text>
+        )}
+        {/* Min */}
+        <text x={arcX(startDeg) - 2} y={arcY(startDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
+          {min}
+        </text>
+        {/* Max */}
+        <text x={arcX(endDeg) + 2} y={arcY(endDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
+          {max}
+        </text>
       </svg>
     </div>
   );
@@ -241,12 +304,14 @@ function StatusDisplay({ value, label, color, onValue, isOnline }: {
 }) {
   const on = isOnline && isStatusOn(value, onValue);
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-3 mt-auto">
-      <div className={`relative w-16 h-8 rounded-full transition-all duration-300 ${on ? "" : "bg-slate-200 dark:bg-slate-700"}`}
-        style={{ backgroundColor: on ? color : undefined }}>
-        <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-9" : "left-1"}`} />
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className={`relative w-14 h-7 rounded-full transition-all duration-300 ${on ? "" : "bg-slate-200 dark:bg-slate-700"}`}
+        style={{ backgroundColor: on ? color : undefined }}
+      >
+        <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-7" : "left-0.5"}`} />
       </div>
-      <span className="text-base font-black uppercase tracking-widest" style={{ color: on ? color : "#94a3b8" }}>
+      <span className="text-sm font-black uppercase tracking-widest" style={{ color: on ? color : "#94a3b8" }}>
         {on ? "ON" : "OFF"}
       </span>
     </div>
@@ -260,18 +325,18 @@ function AreaDisplay({ data, color, item }: { data: any[]; color: string; item: 
   const keys    = isMulti ? item.keys! : [item.key];
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
 
-  const getColor = (i: number) => isMulti ? (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) : color;
+  const getColor    = (i: number) => isMulti ? (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) : color;
   const getDecimals = (i: number) => { const d = item.keyDecimals?.[i] ?? -1; return d < 0 ? undefined : d; };
 
   return (
-    <div className="h-36 w-full mt-2">
+    <div className="w-full h-full" style={{ minHeight: 100 }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={indexed} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
           <defs>
             {keys.map((k, i) => (
               <linearGradient key={k} id={`grad-${k}-${i}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor={getColor(i)} stopOpacity={0.2} />
-                <stop offset="100%" stopColor={getColor(i)} stopOpacity={0}   />
+                <stop offset="0%"   stopColor={getColor(i)} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={getColor(i)} stopOpacity={0}    />
               </linearGradient>
             ))}
           </defs>
@@ -303,7 +368,7 @@ function AreaDisplay({ data, color, item }: { data: any[]; color: string; item: 
 function BarDisplay({ data, color }: { data: { time: string; val: number }[]; color: string }) {
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
   return (
-    <div className="h-36 w-full mt-2">
+    <div className="w-full h-full" style={{ minHeight: 100 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={indexed} margin={{ top: 4, right: 4, left: -24, bottom: 0 }} barCategoryGap="25%">
           <XAxis dataKey="_idx" tick={{ fontSize: 8, fill: "#94a3b8" }} tickLine={false} axisLine={false}
@@ -325,7 +390,7 @@ function BarDisplay({ data, color }: { data: { time: string; val: number }[]; co
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ─── WIDGET SETTINGS PANEL (dirender di sidebar page, bukan di dalam kartu) ──
+// ─── WIDGET SETTINGS PANEL ────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface WidgetSettingsPanelProps {
@@ -342,7 +407,6 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
   const isTrend  = item.type === "trend";
   const isStatus = item.type === "status";
 
-  // ── Baris dinamis untuk area chart ────────────────────────────────────────
   const initRows = (): KeyRow[] => {
     const keys = item.keys?.length ? item.keys : (item.key ? [item.key] : [""]);
     return keys.map((k, i) => ({
@@ -367,23 +431,15 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
   const updateRow = (i: number, field: keyof KeyRow, val: any) =>
     syncRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
-  const isMultiKey   = item.type === "chart" && rows.length > 1;
-  const hasEmptyKey  = rows.some((r) => !r.key.trim());
+  const isMultiKey  = item.type === "chart" && rows.length > 1;
+  const hasEmptyKey = rows.some((r) => !r.key.trim());
 
-  // ── Thresholds ─────────────────────────────────────────────────────────────
   const thresholds: ThresholdItem[] = item.thresholds ?? [];
 
-  const addThreshold = () => {
-    const next = [...thresholds, { value: 0, color: "#ef4444", label: "" }];
-    onUpdate(index, "thresholds", next);
-  };
-  const removeThreshold = (i: number) => {
-    onUpdate(index, "thresholds", thresholds.filter((_, idx) => idx !== i));
-  };
-  const updateThreshold = (i: number, field: keyof ThresholdItem, val: any) => {
-    const next = thresholds.map((t, idx) => idx === i ? { ...t, [field]: val } : t);
-    onUpdate(index, "thresholds", next);
-  };
+  const addThreshold    = () => onUpdate(index, "thresholds", [...thresholds, { value: 0, color: "#ef4444", label: "" }]);
+  const removeThreshold = (i: number) => onUpdate(index, "thresholds", thresholds.filter((_, idx) => idx !== i));
+  const updateThreshold = (i: number, field: keyof ThresholdItem, val: any) =>
+    onUpdate(index, "thresholds", thresholds.map((t, idx) => idx === i ? { ...t, [field]: val } : t));
 
   const inp = "w-full mt-1 bg-slate-50 dark:bg-slate-900/60 rounded-lg px-3 py-2 text-[11px] font-medium outline-none focus:ring-2 ring-blue-200 dark:ring-blue-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 placeholder:text-slate-300 dark:placeholder:text-slate-600";
   const lbl = "text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest";
@@ -408,7 +464,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3.5">
 
-        {/* ── Tipe ── */}
+        {/* Tipe */}
         <div>
           <label className={lbl}>Tipe Tampilan</label>
           <div className="grid grid-cols-3 gap-1.5 mt-1.5">
@@ -420,21 +476,21 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                     ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
                     : "border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300 bg-transparent"
                 }`}>
-                <span>{({hash:<Hash className="w-3.5 h-3.5"/>,"trending-up":<TrendingUp className="w-3.5 h-3.5"/>,"gauge":<Gauge className="w-3.5 h-3.5"/>,"toggle":<ToggleLeft className="w-3.5 h-3.5"/>,"area":<Activity className="w-3.5 h-3.5"/>,"bar":<BarChart2 className="w-3.5 h-3.5"/>} as any)[t.icon]}</span>
+                <span>{({"hash":<Hash className="w-3.5 h-3.5"/>,"trending-up":<TrendingUp className="w-3.5 h-3.5"/>,"gauge":<Gauge className="w-3.5 h-3.5"/>,"toggle":<ToggleLeft className="w-3.5 h-3.5"/>,"area":<Activity className="w-3.5 h-3.5"/>,"bar":<BarChart2 className="w-3.5 h-3.5"/>} as any)[t.icon]}</span>
                 <span className="text-[8px] font-black uppercase tracking-wide leading-none">{t.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* ── Label ── */}
+        {/* Label */}
         <div>
           <label className={lbl}>Label</label>
           <input className={inp} placeholder="Suhu Ruangan" value={item.label}
             onChange={(e) => onUpdate(index, "label", e.target.value)} />
         </div>
 
-        {/* ── MQTT Key (non-chart) ── */}
+        {/* MQTT Key */}
         {!isChart && (
           <div>
             <label className={lbl}>MQTT Key</label>
@@ -443,7 +499,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Unit + Ukuran ── */}
+        {/* Unit + Ukuran */}
         <div className={`grid gap-2 ${isStatus ? "grid-cols-1" : "grid-cols-2"}`}>
           {!isStatus && (
             <div>
@@ -461,7 +517,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         </div>
 
-        {/* ── Desimal (gauge & trend) ── */}
+        {/* Desimal */}
         {(isGauge || isTrend) && (
           <div>
             <label className={lbl}>Format Desimal</label>
@@ -480,7 +536,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Warna aksen (non-multi-chart) ── */}
+        {/* Warna aksen */}
         {(!isChart || item.type === "bar" || !isMultiKey) && (
           <div>
             <label className={lbl}>Warna Aksen</label>
@@ -496,7 +552,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Gauge min/max ── */}
+        {/* Gauge min/max */}
         {isGauge && (
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -512,7 +568,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Status ON value ── */}
+        {/* Status ON value */}
         {isStatus && (
           <div>
             <label className={lbl}>Nilai "ON"</label>
@@ -522,7 +578,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Bar: single key ── */}
+        {/* Bar: single key */}
         {item.type === "bar" && (
           <div>
             <label className={lbl}>MQTT Key</label>
@@ -531,7 +587,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Area: baris dinamis ── */}
+        {/* Area: multi key */}
         {item.type === "chart" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -548,8 +604,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Garis {i + 1}</span>
                     {rows.length > 1 && (
-                      <button onClick={() => removeRow(i)}
-                        className="p-0.5 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer">
+                      <button onClick={() => removeRow(i)} className="p-0.5 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer">
                         <X className="w-3 h-3" />
                       </button>
                     )}
@@ -584,7 +639,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ── Range ── */}
+        {/* Range */}
         {isChart && (
           <div>
             <label className={lbl}>Rentang Waktu</label>
@@ -603,43 +658,34 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* ══ THRESHOLDS (gauge, value, trend) ══════════════════════════════ */}
+        {/* Thresholds */}
         {(isGauge || item.type === "value" || item.type === "trend") && (
           <div className="space-y-2">
             <div className={sec}>Thresholds</div>
             <p className="text-[9px] text-slate-400">
-              Warna widget berubah otomatis saat nilai melewati threshold. Diurutkan dari kecil ke besar.
+              Warna widget berubah otomatis saat nilai melewati threshold.
             </p>
 
-            {/* Base color row */}
+            {/* Base row */}
             <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-700">
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color ?? defaultColor(item.type) }} />
               <span className="text-[9px] font-black text-slate-500 flex-1">Base (default)</span>
               <span className="text-[9px] font-mono text-slate-400">—</span>
             </div>
 
-            {/* Threshold rows */}
             {[...thresholds]
               .map((t, i) => ({ ...t, _i: i }))
               .sort((a, b) => a.value - b.value)
               .map(({ _i, value: tVal, color: tColor, label: tLabel }) => (
                 <div key={_i} className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
-                  <input type="color" value={tColor}
-                    onChange={(e) => updateThreshold(_i, "color", e.target.value)}
+                  <input type="color" value={tColor} onChange={(e) => updateThreshold(_i, "color", e.target.value)}
                     className="w-6 h-6 rounded-full cursor-pointer border-0 p-0 bg-transparent shrink-0" />
-                  <input
-                    type="number"
+                  <input type="number"
                     className="flex-1 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[11px] font-mono font-bold outline-none border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 min-w-0"
-                    placeholder="Nilai"
-                    value={tVal}
-                    onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))}
-                  />
+                    placeholder="Nilai" value={tVal} onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))} />
                   <input
-                    className="w-16 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[10px] font-medium outline-none border border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 min-w-0"
-                    placeholder="Label"
-                    value={tLabel ?? ""}
-                    onChange={(e) => updateThreshold(_i, "label", e.target.value)}
-                  />
+                    className="w-16 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[10px] font-medium outline-none border border-slate-100 dark:border-slate-700 text-slate-500 min-w-0"
+                    placeholder="Label" value={tLabel ?? ""} onChange={(e) => updateThreshold(_i, "label", e.target.value)} />
                   <button onClick={() => removeThreshold(_i)}
                     className="p-1 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer shrink-0">
                     <X className="w-3 h-3" />
@@ -656,7 +702,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
 
       </div>
 
-      {/* Footer: hapus widget */}
+      {/* Footer */}
       <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
         <button onClick={() => { onRemove(index); onClose(); }}
           className="w-full py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-rose-500 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer bg-transparent">
