@@ -7,15 +7,20 @@ from app.services.ingestion_service import IngestionService
 class MessageHandler:
     @staticmethod
     def handle(topic: str, payload_str: str):
+        if not payload_str or not payload_str.strip():
+            print(f"⚠️ Payload kosong diabaikan: {topic}")
+            return
+    
         try:
             data = json.loads(payload_str)
         except json.JSONDecodeError:
             print(f"⚠️ Payload bukan JSON valid: {payload_str}")
             return
 
-        # Topic format: data/{vendor}/{product}/{terminal_id}
-        # Contoh: data/Tetraco/GDCData/231
-        # terminal_id (segment terakhir) = hmi_code di tabel gateways
+        if not data or not isinstance(data, dict):
+            print(f"⚠️ Payload kosong/invalid diabaikan: {topic}")
+            return
+     
         parts = topic.split("/")
         hmi_code = parts[-1] if parts else None
 
