@@ -27,9 +27,9 @@ const DIVISOR_OPTIONS = [
 const SWATCH = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316","#84cc16","#ffffff","#94a3b8","#1e293b"];
 
 export type KeyRow = {
-  key:          string;
-  color:        string;
-  divisor:      number;
+  key:     string;
+  color:   string;
+  divisor: number;
 };
 
 interface WidgetCardProps {
@@ -143,10 +143,7 @@ function ValueDisplay({ rawValue, unit, color, isOnline, divisor, decimalPlaces 
     <div className="flex flex-col items-center gap-2 w-full">
       <span
         className={`font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
-        style={{
-          color: isOnline ? color : undefined,
-          fontSize: "clamp(2rem, 8vw, 5rem)",
-        }}
+        style={{ color: isOnline ? color : undefined, fontSize: "clamp(2rem, 8vw, 5rem)" }}
       >
         {display}
       </span>
@@ -172,10 +169,7 @@ function TrendDisplay({ rawValue, unit, color, isOnline, sparkData, divisor, dec
       <div className="flex items-baseline gap-2 flex-wrap justify-center">
         <span
           className={`font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
-          style={{
-            color: isOnline ? color : undefined,
-            fontSize: "clamp(2rem, 8vw, 4.5rem)",
-          }}
+          style={{ color: isOnline ? color : undefined, fontSize: "clamp(2rem, 8vw, 4.5rem)" }}
         >
           {display}
         </span>
@@ -213,25 +207,51 @@ function GaugeDisplay({ rawValue, unit, color, min, max, divisor, decimalPlaces 
   const toRad = (d: number) => (d * Math.PI) / 180;
   const arcX  = (d: number) => cx + R * Math.cos(toRad(d));
   const arcY  = (d: number) => cy + R * Math.sin(toRad(d));
-  const startDeg = 135; const endDeg = 45;
+  const startDeg = 135;
+  const endDeg   = 45;
   const fillDeg  = startDeg + pct * 270;
 
-  const bgPath   = `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 1 1 ${arcX(endDeg)} ${arcY(endDeg)}`;
-  const fillPath = pct > 0
+  const bgPath = `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 1 1 ${arcX(endDeg)} ${arcY(endDeg)}`;
+
+  // MIN_PCT: arc fill harus cukup panjang agar strokeLinecap="round" tidak
+  // membuat cap mencuat lebih besar dari arc itu sendiri.
+  // strokeWidth=7 → cap radius=3.5px. Arc length = pct × 270 × (π/180) × R
+  // Butuh length > 2 × cap_radius → MIN_PCT = 7 / (270 × π/180 × 40) ≈ 0.037
+  const MIN_PCT  = 0.037;
+  const fillPath = pct >= MIN_PCT
     ? `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 ${pct > 0.5 ? 1 : 0} 1 ${arcX(fillDeg)} ${arcY(fillDeg)}`
     : null;
 
   return (
     <div className="w-full flex flex-col items-center">
+      {/* viewBox 0 0 120 90: cukup ruang untuk arc R=40, cx=60, cy=58 */}
       <svg viewBox="0 0 120 90" className="w-full max-w-[200px]">
-        <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round" className="dark:stroke-slate-700" />
-        {fillPath && <path d={fillPath} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round" style={{ transition: "stroke 0.4s ease" }} />}
-        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" fontWeight="900" fill={color} style={{ transition: "fill 0.4s ease" }}>
+        {/* Track */}
+        <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round"
+          className="dark:stroke-slate-700" />
+        {/* Fill */}
+        {fillPath && (
+          <path d={fillPath} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
+            style={{ transition: "stroke 0.4s ease" }} />
+        )}
+        {/* Nilai */}
+        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" fontWeight="900" fill={color}
+          style={{ transition: "fill 0.4s ease" }}>
           {display}
         </text>
-        {unit && <text x={cx} y={cy + 23} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">{unit}</text>}
-        <text x={arcX(startDeg) - 2} y={arcY(startDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">{min}</text>
-        <text x={arcX(endDeg) + 2}   y={arcY(endDeg)   + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">{max}</text>
+        {/* Satuan */}
+        {unit && (
+          <text x={cx} y={cy + 23} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">
+            {unit}
+          </text>
+        )}
+        {/* Label min/max di ujung arc */}
+        <text x={arcX(startDeg) - 2} y={arcY(startDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
+          {min}
+        </text>
+        <text x={arcX(endDeg) + 2} y={arcY(endDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
+          {max}
+        </text>
       </svg>
     </div>
   );
@@ -242,19 +262,18 @@ function GaugeDisplay({ rawValue, unit, color, min, max, divisor, decimalPlaces 
 function StatusDisplay({ rawValue, color, offColor, onValue, isOnline }: {
   rawValue: any; color: string; offColor?: string; onValue?: string; isOnline: boolean;
 }) {
-  const on       = isOnline && isStatusOn(rawValue, onValue);
-  const onColor  = color;
-  const offClr   = offColor ?? "#94a3b8";
+  const on     = isOnline && isStatusOn(rawValue, onValue);
+  const offClr = offColor ?? "#94a3b8";
 
   return (
     <div className="flex flex-col items-center gap-3">
       <div
         className="relative w-16 h-8 rounded-full transition-all duration-300"
-        style={{ backgroundColor: on ? onColor : offClr }}
+        style={{ backgroundColor: on ? color : offClr }}
       >
         <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-9" : "left-1"}`} />
       </div>
-      <span className="text-base font-black uppercase tracking-widest" style={{ color: on ? onColor : offClr }}>
+      <span className="text-base font-black uppercase tracking-widest" style={{ color: on ? color : offClr }}>
         {on ? "ON" : "OFF"}
       </span>
     </div>
@@ -495,7 +514,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Divisor (value, gauge, trend, bar) */}
+        {/* Divisor */}
         {(isValue || isGauge || isTrend || item.type === "bar") && (
           <>
             <div className={sec}>Transformasi Nilai</div>
@@ -503,7 +522,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </>
         )}
 
-        {/* Warna aksen — tidak untuk gauge (pakai threshold) */}
+        {/* Warna aksen */}
         {!isGauge && (!isChart || item.type === "bar" || !isMultiKey) && !isStatus && (
           <div>
             <label className={lbl}>Warna Aksen</label>
@@ -511,7 +530,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Status: warna ON dan OFF */}
+        {/* Status colors */}
         {isStatus && (
           <div className="space-y-3">
             <div>
@@ -547,7 +566,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Bar: single key */}
+        {/* Bar key */}
         {item.type === "bar" && (
           <div>
             <label className={lbl}>MQTT Key</label>
@@ -556,7 +575,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Area: baris dinamis */}
+        {/* Area keys */}
         {item.type === "chart" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -626,7 +645,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Thresholds — gauge, value, trend */}
+        {/* Thresholds */}
         {(isGauge || isValue || isTrend) && (
           <div className="space-y-2">
             <div className={sec}>Thresholds</div>
@@ -634,7 +653,6 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
               Warna berubah saat nilai melewati threshold (dibandingkan nilai setelah divisor).
             </p>
 
-            {/* Base color — untuk gauge ini adalah warna utama */}
             <div className="space-y-1">
               <p className="text-[9px] font-black text-slate-400">Warna Base</p>
               <ColorSwatch field="color" value={item.color} />
@@ -649,10 +667,12 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                     className="w-6 h-6 rounded-full cursor-pointer border-0 p-0 bg-transparent shrink-0" />
                   <input type="number"
                     className="flex-1 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[11px] font-mono font-bold outline-none border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 min-w-0"
-                    placeholder="Nilai" value={tVal} onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))} />
+                    placeholder="Nilai" value={tVal}
+                    onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))} />
                   <input
                     className="w-16 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[10px] font-medium outline-none border border-slate-100 dark:border-slate-700 text-slate-500 min-w-0"
-                    placeholder="Label" value={tLabel ?? ""} onChange={(e) => updateThreshold(_i, "label", e.target.value)} />
+                    placeholder="Label" value={tLabel ?? ""}
+                    onChange={(e) => updateThreshold(_i, "label", e.target.value)} />
                   <button onClick={() => removeThreshold(_i)}
                     className="p-1 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer shrink-0">
                     <X className="w-3 h-3" />
