@@ -39,6 +39,11 @@ class MQTTClient:
             MessageHandler.handle(message.topic, payload_str)
         except Exception as e:
             print(f"⚠️ Gagal memproses data MQTT internal FastAPI: {e}")
+        if message.retain:
+            print(f"⚠️ Retained message diabaikan: {message.topic}")
+            return
+
+        MessageHandler.handle(message.topic, message.payload.decode("utf-8", errors="ignore"))
 
     def connect_and_start(self):
         host = os.getenv("MQTT_HOST", "127.0.0.1")
