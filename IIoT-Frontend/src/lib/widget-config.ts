@@ -54,31 +54,48 @@ export const WIDGET_TYPES: {
   { value: "bar",    label: "Bar",    desc: "Grafik batang historis",   icon: "bar",         defaultSize: "medium" },
 ];
 
-// ─── Value transform helper ───────────────────────────────────────────────────
+// ─── Value transform helpers ──────────────────────────────────────────────────
+
+/**
+ * Cek apakah raw value valid (bukan null, undefined, string kosong, atau whitespace).
+ * HMI Haiwell kadang kirim string kosong "" saat nilai belum terbaca dari PLC.
+ */
+function isValidValue(value: any): boolean {
+  if (value === null || value === undefined) return false;
+  const str = String(value).trim();
+  if (str === "" || str === "-") return false;
+  return !isNaN(Number(str));
+}
+
+/**
+ * Terapkan divisor ke raw value. Return NaN jika value tidak valid.
+ * Aman terhadap string kosong dari HMI.
+ */
+export function applyDivisor(value: any, divisor?: number): number {
+  if (!isValidValue(value)) return NaN;
+  const num = Number(String(value).trim());
+  const div = divisor && divisor !== 0 ? divisor : 1;
+  return num / div;
+}
+
+/**
+ * Format raw value untuk display. Return "—" jika value tidak valid.
+ * Handles: null, undefined, string kosong "", whitespace " ", non-numeric.
+ */
 export function applyTransform(
   value: any,
   divisor?: number,
   decimalPlaces?: number
 ): string {
-  if (value === null || value === undefined) return "—";
-  const num = Number(value);
-  if (isNaN(num)) return String(value);
-
+  if (!isValidValue(value)) return "—";
+  const num    = Number(String(value).trim());
   const div    = divisor && divisor !== 0 ? divisor : 1;
   const result = num / div;
 
   if (decimalPlaces === undefined || decimalPlaces < 0) {
-    // Auto: hilangkan trailing zero yang tidak perlu
     return String(parseFloat(result.toPrecision(10)));
   }
   return result.toFixed(decimalPlaces);
-}
-
-export function applyDivisor(value: any, divisor?: number): number {
-  const num = Number(value ?? 0);
-  if (isNaN(num)) return 0;
-  const div = divisor && divisor !== 0 ? divisor : 1;
-  return num / div;
 }
 
 // ─── Default grid sizes ───────────────────────────────────────────────────────
@@ -134,7 +151,7 @@ export function resolveThresholdColor(
 ): string {
   if (!thresholds || thresholds.length === 0) return baseColor;
   const num = applyDivisor(value, divisor);
-  if (isNaN(num)) return baseColor;
+  if (isNaN(num)) return baseColor; // value kosong → pakai warna base
   const sorted = [...thresholds].sort((a, b) => a.value - b.value);
   let active = baseColor;
   for (const t of sorted) {
@@ -161,24 +178,26 @@ export function getChartData(item: WidgetItem, logs: any[]) {
     if (isMulti) {
       const point: any = { time };
       item.keys!.forEach((k, i) => {
-        const raw = Number(l.payload?.[k] ?? 0);
+        const raw = l.payload?.[k];
         const div = item.keyDivisors?.[i] ?? 1;
-        point[k] = div && div !== 0 ? raw / div : raw;
+        // Skip nilai kosong di chart — null agar recharts tidak plot titik
+        point[k] = isValidValue(raw) ? Number(raw) / (div || 1) : null;
       });
       return point;
     }
 
-    const raw = Number(l.payload?.[item.key] ?? 0);
+    const raw = l.payload?.[item.key];
     const div = item.divisor ?? 1;
-    return { time, val: div && div !== 0 ? raw / div : raw };
+    // null agar recharts tidak plot titik untuk data kosong
+    return { time, val: isValidValue(raw) ? Number(raw) / (div || 1) : null };
   });
 }
 
 export function getSparklineData(item: WidgetItem, logs: any[]) {
   return logs.slice(-20).map((l) => {
-    const raw = Number(l.payload?.[item.key] ?? 0);
+    const raw = l.payload?.[item.key];
     const div = item.divisor ?? 1;
-    return { val: div && div !== 0 ? raw / div : raw };
+    return { val: isValidValue(raw) ? Number(raw) / (div || 1) : 0 };
   });
 }
 
@@ -194,6 +213,8 @@ export function getLatestPayload(logs: any[]): Record<string, any> {
 export function isStatusOn(value: any, onValue?: string): boolean {
   if (value === null || value === undefined) return false;
   const v = String(value).toLowerCase().trim();
+  if (v === "") return false; // string kosong dari HMI → OFF
+  if (onValue) return v === onValue.toLowerCase().trim();
   return v === "1" || v === "true" || v === "on" || v === "yes";
 }
 
