@@ -486,7 +486,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </>
         )}
 
-        {/* Warna aksen (non-status, non-gauge single) */}
+        {/* Warna aksen (non-status, non-multi-chart) */}
         {!isStatus && (!isChart || item.type === "bar" || !isMultiKey) && (
           <div>
             <label className={lbl}>Warna Aksen</label>

@@ -31,20 +31,8 @@ export interface WidgetItem {
   max?: number;
   onValue?: string;
   color?: string;
-  /**
-   * Pembagi nilai raw dari sensor.
-   * Contoh: raw=300, divisor=10 → nilai tampil = 30
-   * Default: 1 (tidak dibagi)
-   */
+  offColor?: string;
   divisor?: number;
-  /**
-   * Jumlah digit desimal yang ditampilkan setelah dibagi.
-   * -1 = Auto (tampil apa adanya)
-   *  0 = bulat
-   *  1 = 0.0
-   *  2 = 0.00
-   */
-  decimalPlaces?: number;
   thresholds?: ThresholdItem[];
   gridPos?: GridPos;
 }
