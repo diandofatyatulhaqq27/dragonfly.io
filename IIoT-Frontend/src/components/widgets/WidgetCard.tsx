@@ -7,29 +7,40 @@ import {
 } from "recharts";
 import { Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity, Plus, X, Settings2 } from "lucide-react";
 import {
-  WidgetItem, WIDGET_TYPES, RANGE_OPTIONS,
+  WidgetItem, WIDGET_TYPES, SIZE_OPTIONS, RANGE_OPTIONS,
   getActiveRange, getChartData, getSparklineData,
-  isStatusOn, defaultColor, resolveThresholdColor,
-  applyTransform, applyDivisor, ThresholdItem,
+  isStatusOn, defaultColor, resolveThresholdColor, applyTransform, applyDivisor, ThresholdItem,
 } from "@/lib/widget-config";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const MULTI_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
+const DECIMAL_OPTIONS = [
+  { value: -1, label: "Auto" },
+  { value: 0,  label: "0" },
+  { value: 1,  label: "0.0" },
+  { value: 2,  label: "0.00" },
+  { value: 3,  label: "0.000" },
+];
+
+// Pilihan divisor umum + custom
 const DIVISOR_OPTIONS = [
-  { value: 1,    label: "÷1"    },
-  { value: 10,   label: "÷10"   },
-  { value: 100,  label: "÷100"  },
+  { value: 1,    label: "÷1" },
+  { value: 10,   label: "÷10" },
+  { value: 100,  label: "÷100" },
   { value: 1000, label: "÷1000" },
 ];
 
 const SWATCH = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316","#84cc16","#ffffff","#94a3b8","#1e293b"];
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export type KeyRow = {
-  key:     string;
-  color:   string;
-  divisor: number;
+  key:          string;
+  color:        string;
+  decimalPlaces: number;
+  divisor:      number;
 };
 
 interface WidgetCardProps {
@@ -124,7 +135,7 @@ function WidgetDisplay({
         {item.type === "value"  && <ValueDisplay  rawValue={rawValue} unit={item.unit} color={color} isOnline={isOnline} divisor={item.divisor} decimalPlaces={item.decimalPlaces} />}
         {item.type === "trend"  && <TrendDisplay  rawValue={rawValue} unit={item.unit} color={color} isOnline={isOnline} sparkData={sparkData} divisor={item.divisor} decimalPlaces={item.decimalPlaces} />}
         {item.type === "gauge"  && <GaugeDisplay  rawValue={rawValue} unit={item.unit} color={color} min={item.min ?? 0} max={item.max ?? 100} divisor={item.divisor} decimalPlaces={item.decimalPlaces} />}
-        {item.type === "status" && <StatusDisplay rawValue={rawValue} color={color} offColor={item.offColor} onValue={item.onValue} isOnline={isOnline} />}
+        {item.type === "status" && <StatusDisplay rawValue={rawValue} label={item.label} color={color} onValue={item.onValue} isOnline={isOnline} />}
         {item.type === "chart"  && <AreaDisplay   data={chartData} color={color} item={item} />}
         {item.type === "bar"    && <BarDisplay    data={chartData} color={color} item={item} />}
       </div>
@@ -140,14 +151,12 @@ function ValueDisplay({ rawValue, unit, color, isOnline, divisor, decimalPlaces 
 }) {
   const display = applyTransform(rawValue, divisor, decimalPlaces);
   return (
-    <div className="flex flex-col items-center gap-2 w-full">
-      <span
-        className={`font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
-        style={{ color: isOnline ? color : undefined, fontSize: "clamp(2rem, 8vw, 5rem)" }}
-      >
+    <div className="flex flex-col items-center gap-1">
+      <span className={`text-5xl font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
+        style={{ color: isOnline ? color : undefined }}>
         {display}
       </span>
-      {unit && <span className="text-base font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>}
+      {unit && <span className="text-sm font-black text-slate-400 dark:text-slate-500 tracking-wider">{unit}</span>}
     </div>
   );
 }
@@ -159,29 +168,28 @@ function TrendDisplay({ rawValue, unit, color, isOnline, sparkData, divisor, dec
   sparkData: { val: number }[]; divisor?: number; decimalPlaces?: number;
 }) {
   const display = applyTransform(rawValue, divisor, decimalPlaces);
-  const prev    = sparkData.length > 1 ? sparkData[sparkData.length - 2].val : null;
-  const curr    = applyDivisor(rawValue, divisor);
-  const delta   = prev !== null ? curr - prev : null;
-  const dp      = decimalPlaces !== undefined && decimalPlaces >= 0 ? decimalPlaces : 1;
+
+  const prev  = sparkData.length > 1 ? sparkData[sparkData.length - 2].val : null;
+  const curr  = applyDivisor(rawValue, divisor);
+  const delta = prev !== null ? curr - prev : null;
+  const dp    = decimalPlaces !== undefined && decimalPlaces >= 0 ? decimalPlaces : 1;
 
   return (
     <div className="w-full flex flex-col items-center gap-1">
-      <div className="flex items-baseline gap-2 flex-wrap justify-center">
-        <span
-          className={`font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
-          style={{ color: isOnline ? color : undefined, fontSize: "clamp(2rem, 8vw, 4.5rem)" }}
-        >
+      <div className="flex items-baseline gap-1.5">
+        <span className={`text-5xl font-black tracking-tighter leading-none ${isOnline ? "" : "opacity-25"}`}
+          style={{ color: isOnline ? color : undefined }}>
           {display}
         </span>
-        {unit && <span className="text-base font-black text-slate-400">{unit}</span>}
+        {unit && <span className="text-sm font-black text-slate-400">{unit}</span>}
         {delta !== null && Math.abs(delta) >= 0.005 && (
-          <span className={`text-sm font-black ${delta > 0 ? "text-rose-500" : "text-emerald-500"}`}>
+          <span className={`text-[10px] font-black ml-1 ${delta > 0 ? "text-rose-500" : "text-emerald-500"}`}>
             {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(dp)}
           </span>
         )}
       </div>
       {sparkData.length > 1 && (
-        <div className="w-full" style={{ height: 40 }}>
+        <div className="w-full" style={{ height: 36 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkData}>
               <Line type="monotone" dataKey="val" stroke={color} strokeWidth={2} dot={false} />
@@ -199,6 +207,7 @@ function GaugeDisplay({ rawValue, unit, color, min, max, divisor, decimalPlaces 
   rawValue: any; unit?: string; color: string; min: number; max: number;
   divisor?: number; decimalPlaces?: number;
 }) {
+  // Gauge fill pakai nilai SETELAH divisor
   const num     = applyDivisor(rawValue, divisor);
   const pct     = Math.min(1, Math.max(0, (num - min) / (max - min)));
   const display = applyTransform(rawValue, divisor, decimalPlaces);
@@ -207,51 +216,31 @@ function GaugeDisplay({ rawValue, unit, color, min, max, divisor, decimalPlaces 
   const toRad = (d: number) => (d * Math.PI) / 180;
   const arcX  = (d: number) => cx + R * Math.cos(toRad(d));
   const arcY  = (d: number) => cy + R * Math.sin(toRad(d));
-  const startDeg = 135;
-  const endDeg   = 45;
+  const startDeg = 135; const endDeg = 45;
   const fillDeg  = startDeg + pct * 270;
 
-  const bgPath = `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 1 1 ${arcX(endDeg)} ${arcY(endDeg)}`;
-
-  // MIN_PCT: arc fill harus cukup panjang agar strokeLinecap="round" tidak
-  // membuat cap mencuat lebih besar dari arc itu sendiri.
-  // strokeWidth=7 → cap radius=3.5px. Arc length = pct × 270 × (π/180) × R
-  // Butuh length > 2 × cap_radius → MIN_PCT = 7 / (270 × π/180 × 40) ≈ 0.037
-  const MIN_PCT  = 0.037;
-  const fillPath = pct >= MIN_PCT
-    ? `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 ${pct > 0.5 ? 1 : 0} 1 ${arcX(fillDeg)} ${arcY(fillDeg)}`
+  const bgPath   = `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 1 1 ${arcX(endDeg)} ${arcY(endDeg)}`;
+  // Large-arc flag dari sudut aktual, bukan pct.
+  // arcSpan = fillDeg - startDeg (selalu 0–270°, sweep searah jarum jam).
+  // Jika span > 180° → large-arc = 1, sebaliknya = 0.
+  const arcSpanDeg   = fillDeg - startDeg;
+  const largeArcFlag = arcSpanDeg > 180 ? 1 : 0;
+  const MIN_PCT      = 0.037;
+  const fillPath     = pct >= MIN_PCT
+    ? `M ${arcX(startDeg)} ${arcY(startDeg)} A ${R} ${R} 0 ${largeArcFlag} 1 ${arcX(fillDeg)} ${arcY(fillDeg)}`
     : null;
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* viewBox 0 0 120 90: cukup ruang untuk arc R=40, cx=60, cy=58 */}
-      <svg viewBox="0 0 120 90" className="w-full max-w-[200px]">
-        {/* Track */}
-        <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round"
-          className="dark:stroke-slate-700" />
-        {/* Fill */}
-        {fillPath && (
-          <path d={fillPath} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
-            style={{ transition: "stroke 0.4s ease" }} />
-        )}
-        {/* Nilai */}
-        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" fontWeight="900" fill={color}
-          style={{ transition: "fill 0.4s ease" }}>
+      <svg viewBox="0 0 120 90" className="w-full max-w-[180px]">
+        <path d={bgPath} fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round" className="dark:stroke-slate-700" />
+        {fillPath && <path d={fillPath} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round" style={{ transition: "stroke 0.4s ease" }} />}
+        <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" fontWeight="900" fill={color} style={{ transition: "fill 0.4s ease" }}>
           {display}
         </text>
-        {/* Satuan */}
-        {unit && (
-          <text x={cx} y={cy + 23} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">
-            {unit}
-          </text>
-        )}
-        {/* Label min/max di ujung arc */}
-        <text x={arcX(startDeg) - 2} y={arcY(startDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
-          {min}
-        </text>
-        <text x={arcX(endDeg) + 2} y={arcY(endDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">
-          {max}
-        </text>
+        {unit && <text x={cx} y={cy + 23} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">{unit}</text>}
+        <text x={arcX(startDeg) - 2} y={arcY(startDeg) + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">{min}</text>
+        <text x={arcX(endDeg) + 2}   y={arcY(endDeg)   + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill="#94a3b8">{max}</text>
       </svg>
     </div>
   );
@@ -259,21 +248,17 @@ function GaugeDisplay({ rawValue, unit, color, min, max, divisor, decimalPlaces 
 
 // ─── STATUS ──────────────────────────────────────────────────────────────────
 
-function StatusDisplay({ rawValue, color, offColor, onValue, isOnline }: {
-  rawValue: any; color: string; offColor?: string; onValue?: string; isOnline: boolean;
+function StatusDisplay({ rawValue, label, color, onValue, isOnline }: {
+  rawValue: any; label: string; color: string; onValue?: string; isOnline: boolean;
 }) {
-  const on     = isOnline && isStatusOn(rawValue, onValue);
-  const offClr = offColor ?? "#94a3b8";
-
+  const on = isOnline && isStatusOn(rawValue, onValue);
   return (
     <div className="flex flex-col items-center gap-3">
-      <div
-        className="relative w-16 h-8 rounded-full transition-all duration-300"
-        style={{ backgroundColor: on ? color : offClr }}
-      >
-        <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-9" : "left-1"}`} />
+      <div className={`relative w-14 h-7 rounded-full transition-all duration-300 ${on ? "" : "bg-slate-200 dark:bg-slate-700"}`}
+        style={{ backgroundColor: on ? color : undefined }}>
+        <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${on ? "left-7" : "left-0.5"}`} />
       </div>
-      <span className="text-base font-black uppercase tracking-widest" style={{ color: on ? color : offClr }}>
+      <span className="text-sm font-black uppercase tracking-widest" style={{ color: on ? color : "#94a3b8" }}>
         {on ? "ON" : "OFF"}
       </span>
     </div>
@@ -286,7 +271,15 @@ function AreaDisplay({ data, color, item }: { data: any[]; color: string; item: 
   const isMulti = item.type === "chart" && (item.keys?.length ?? 0) > 1;
   const keys    = isMulti ? item.keys! : [item.key];
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
+
   const getColor = (i: number) => isMulti ? (item.colors?.[i] ?? MULTI_COLORS[i % MULTI_COLORS.length]) : color;
+
+  const formatTip = (value: any, keyIdx: number) => {
+    // data sudah dibagi di getChartData, tinggal format desimal
+    const dp = item.keyDecimals?.[keyIdx] ?? -1;
+    if (dp < 0) return String(parseFloat(Number(value).toPrecision(10)));
+    return Number(value).toFixed(dp);
+  };
 
   return (
     <div className="w-full h-full" style={{ minHeight: 100 }}>
@@ -306,7 +299,10 @@ function AreaDisplay({ data, color, item }: { data: any[]; color: string; item: 
           <Tooltip
             allowEscapeViewBox={{ x: false, y: false }}
             contentStyle={{ fontSize: "10px", fontWeight: 700, borderRadius: "10px", border: "1px solid #e2e8f0", padding: "6px 10px", backgroundColor: "#fff" }}
-            formatter={(value: any, name: string) => [String(parseFloat(Number(value).toPrecision(10))), isMulti ? name : item.key]}
+            formatter={(value: any, name: string) => {
+              const ki = isMulti ? keys.indexOf(name) : 0;
+              return [formatTip(value, ki), isMulti ? name : item.key];
+            }}
             labelFormatter={(idx) => indexed[Number(idx)]?.time ?? ""}
             labelStyle={{ color: "#94a3b8", marginBottom: 4 }}
           />
@@ -324,6 +320,12 @@ function AreaDisplay({ data, color, item }: { data: any[]; color: string; item: 
 
 function BarDisplay({ data, color, item }: { data: { time: string; val: number }[]; color: string; item: WidgetItem }) {
   const indexed = React.useMemo(() => data.map((d, i) => ({ ...d, _idx: i })), [data]);
+  const dp = item.decimalPlaces ?? -1;
+  const formatTip = (v: any) => {
+    const n = Number(v);
+    if (dp < 0) return String(parseFloat(n.toPrecision(10)));
+    return n.toFixed(dp);
+  };
 
   return (
     <div className="w-full h-full" style={{ minHeight: 100 }}>
@@ -335,7 +337,7 @@ function BarDisplay({ data, color, item }: { data: { time: string; val: number }
           <Tooltip
             allowEscapeViewBox={{ x: false, y: false }}
             contentStyle={{ fontSize: "10px", fontWeight: 700, borderRadius: "10px", border: "1px solid #e2e8f0", padding: "4px 8px", backgroundColor: "#fff" }}
-            formatter={(value: any) => [String(parseFloat(Number(value).toPrecision(10))), item.key || "val"]}
+            formatter={(value: any) => [formatTip(value), item.key || "val"]}
             labelFormatter={(idx) => indexed[Number(idx)]?.time ?? ""}
             labelStyle={{ color: "#94a3b8", marginBottom: 2 }}
             cursor={{ fill: `${color}15` }}
@@ -366,12 +368,14 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
   const isValue  = item.type === "value";
   const isStatus = item.type === "status";
 
+  // ── Baris dinamis area chart ──────────────────────────────────────────────
   const initRows = (): KeyRow[] => {
     const keys = item.keys?.length ? item.keys : (item.key ? [item.key] : [""]);
     return keys.map((k, i) => ({
-      key:     k,
-      color:   item.colors?.[i]      ?? MULTI_COLORS[i % MULTI_COLORS.length],
-      divisor: item.keyDivisors?.[i] ?? 1,
+      key:           k,
+      color:         item.colors?.[i]       ?? MULTI_COLORS[i % MULTI_COLORS.length],
+      decimalPlaces: item.keyDecimals?.[i]  ?? -1,
+      divisor:       item.keyDivisors?.[i]  ?? 1,
     }));
   };
 
@@ -382,13 +386,14 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
 
   const syncRows = (next: KeyRow[]) => {
     setRows(next);
-    onUpdate(index, "key",         next[0]?.key ?? "");
-    onUpdate(index, "keys",        next.length > 1 ? next.map((r) => r.key) : []);
-    onUpdate(index, "colors",      next.map((r) => r.color));
-    onUpdate(index, "keyDivisors", next.map((r) => r.divisor));
+    onUpdate(index, "key",          next[0]?.key ?? "");
+    onUpdate(index, "keys",         next.length > 1 ? next.map((r) => r.key) : []);
+    onUpdate(index, "colors",       next.map((r) => r.color));
+    onUpdate(index, "keyDecimals",  next.map((r) => r.decimalPlaces));
+    onUpdate(index, "keyDivisors",  next.map((r) => r.divisor));
   };
 
-  const addRow    = () => syncRows([...rows, { key: "", color: MULTI_COLORS[rows.length % MULTI_COLORS.length], divisor: 1 }]);
+  const addRow    = () => syncRows([...rows, { key: "", color: MULTI_COLORS[rows.length % MULTI_COLORS.length], decimalPlaces: -1, divisor: 1 }]);
   const removeRow = (i: number) => syncRows(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : rows);
   const updateRow = (i: number, field: keyof KeyRow, val: any) =>
     syncRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
@@ -406,23 +411,16 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
   const lbl = "text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest";
   const sec = "text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em] pt-3 pb-1 border-t border-slate-100 dark:border-slate-700/50 mt-1";
 
-  const ColorSwatch = ({ field, value }: { field: string; value?: string }) => (
-    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-      {SWATCH.map((c) => (
-        <button key={c} onClick={() => onUpdate(index, field, c)}
-          className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer ${value === c ? "border-slate-600 scale-110" : "border-transparent"}`}
-          style={{ backgroundColor: c }} />
-      ))}
-      <input type="color" value={value ?? "#3b82f6"} onChange={(e) => onUpdate(index, field, e.target.value)}
-        className="w-5 h-5 rounded-full cursor-pointer border-0 p-0 bg-transparent" />
-    </div>
-  );
-
+  // ── Divisor + DecimalPlaces block (shared untuk value/gauge/trend/bar) ────
   const DivisorBlock = () => (
     <div className="space-y-2.5">
+      {/* Divisor */}
       <div>
         <label className={lbl}>Pembagi Nilai (Divisor)</label>
-        <div className="flex gap-1.5 flex-wrap mt-1.5">
+        <p className="text-[9px] text-slate-400 mb-1.5">
+          Raw ÷ divisor = nilai tampil. Contoh: raw 300 ÷ 10 = 30
+        </p>
+        <div className="flex gap-1.5 flex-wrap">
           {DIVISOR_OPTIONS.map((d) => (
             <button key={d.value} onClick={() => { onUpdate(index, "divisor", d.value); setCustomDivisor(""); }}
               className={`px-2.5 py-1 rounded-lg text-[9px] font-black border transition-all cursor-pointer ${
@@ -433,15 +431,38 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
               {d.label}
             </button>
           ))}
-          <input type="number"
+          {/* Custom divisor input */}
+          <input
+            type="number"
             className="w-20 bg-slate-50 dark:bg-slate-900/60 rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold outline-none border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:ring-2 ring-indigo-200"
-            placeholder="custom" value={customDivisor} min={1}
+            placeholder="custom"
+            value={customDivisor}
+            min={1}
             onChange={(e) => {
               setCustomDivisor(e.target.value);
               const n = Number(e.target.value);
               if (n > 0) onUpdate(index, "divisor", n);
-            }} />
+            }}
+          />
         </div>
+      </div>
+
+      {/* Decimal places */}
+      <div>
+        <label className={lbl}>Jumlah Desimal Tampilan</label>
+        <div className="flex gap-1.5 mt-1.5 flex-wrap">
+          {DECIMAL_OPTIONS.map((d) => (
+            <button key={d.value} onClick={() => onUpdate(index, "decimalPlaces", d.value)}
+              className={`px-2.5 py-1 rounded-lg text-[9px] font-black border transition-all cursor-pointer ${
+                (item.decimalPlaces ?? -1) === d.value
+                  ? "bg-blue-500 border-blue-500 text-white"
+                  : "bg-transparent border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-300"
+              }`}>
+              {d.label}
+            </button>
+          ))}
+        </div>
+        {/* Preview */}
         {item.divisor && item.divisor !== 1 && (
           <p className="text-[9px] text-indigo-500 mt-1.5 font-bold">
             Preview: raw 300 → {applyTransform(300, item.divisor, item.decimalPlaces ?? -1)}
@@ -505,16 +526,25 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Unit */}
-        {!isStatus && (
+        {/* Unit + Ukuran */}
+        <div className={`grid gap-2 ${isStatus ? "grid-cols-1" : "grid-cols-2"}`}>
+          {!isStatus && (
+            <div>
+              <label className={lbl}>Satuan</label>
+              <input className={inp} placeholder="°C" autoCapitalize="none"
+                value={item.unit ?? ""} onChange={(e) => onUpdate(index, "unit", e.target.value)} />
+            </div>
+          )}
           <div>
-            <label className={lbl}>Satuan</label>
-            <input className={inp} placeholder="°C" autoCapitalize="none"
-              value={item.unit ?? ""} onChange={(e) => onUpdate(index, "unit", e.target.value)} />
+            <label className={lbl}>Ukuran</label>
+            <select className={`${inp} cursor-pointer`} value={item.size ?? "small"}
+              onChange={(e) => onUpdate(index, "size", e.target.value)}>
+              {SIZE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
           </div>
-        )}
+        </div>
 
-        {/* Divisor */}
+        {/* Divisor + Decimal (value, gauge, trend, bar) */}
         {(isValue || isGauge || isTrend || item.type === "bar") && (
           <>
             <div className={sec}>Transformasi Nilai</div>
@@ -523,29 +553,17 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
         )}
 
         {/* Warna aksen */}
-        {!isGauge && (!isChart || item.type === "bar" || !isMultiKey) && !isStatus && (
+        {(!isChart || item.type === "bar" || !isMultiKey) && (
           <div>
             <label className={lbl}>Warna Aksen</label>
-            <ColorSwatch field="color" value={item.color} />
-          </div>
-        )}
-
-        {/* Status colors */}
-        {isStatus && (
-          <div className="space-y-3">
-            <div>
-              <label className={lbl}>Warna saat ON</label>
-              <ColorSwatch field="color" value={item.color} />
-            </div>
-            <div>
-              <label className={lbl}>Warna saat OFF</label>
-              <ColorSwatch field="offColor" value={item.offColor} />
-            </div>
-            <div>
-              <label className={lbl}>Nilai "ON"</label>
-              <input className={inp} placeholder="1 / true / on" value={item.onValue ?? ""}
-                onChange={(e) => onUpdate(index, "onValue", e.target.value)} />
-              <p className="text-[9px] text-slate-400 mt-1">Nilai MQTT yang dianggap aktif/menyala</p>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {SWATCH.map((c) => (
+                <button key={c} onClick={() => onUpdate(index, "color", c)}
+                  className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer ${item.color === c ? "border-slate-600 scale-110" : "border-transparent"}`}
+                  style={{ backgroundColor: c }} />
+              ))}
+              <input type="color" value={item.color ?? "#3b82f6"} onChange={(e) => onUpdate(index, "color", e.target.value)}
+                className="w-5 h-5 rounded-full cursor-pointer border-0 p-0 bg-transparent" />
             </div>
           </div>
         )}
@@ -566,7 +584,17 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Bar key */}
+        {/* Status ON value */}
+        {isStatus && (
+          <div>
+            <label className={lbl}>Nilai "ON"</label>
+            <input className={inp} placeholder="1 / true / on" value={item.onValue ?? ""}
+              onChange={(e) => onUpdate(index, "onValue", e.target.value)} />
+            <p className="text-[9px] text-slate-400 mt-1">Nilai MQTT yang dianggap aktif/menyala</p>
+          </div>
+        )}
+
+        {/* Bar: single key */}
         {item.type === "bar" && (
           <div>
             <label className={lbl}>MQTT Key</label>
@@ -575,7 +603,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </div>
         )}
 
-        {/* Area keys */}
+        {/* Area: baris dinamis */}
         {item.type === "chart" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -600,6 +628,8 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                   <input
                     className={`w-full bg-white dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-medium outline-none focus:ring-2 ring-blue-200 dark:ring-blue-800 text-blue-600 dark:text-blue-400 border placeholder:text-slate-300 ${!row.key.trim() ? "border-amber-300" : "border-slate-200 dark:border-slate-600"}`}
                     placeholder="CHWS" value={row.key} onChange={(e) => updateRow(i, "key", e.target.value)} />
+
+                  {/* Warna */}
                   <div className="flex items-center gap-1 flex-wrap">
                     {["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06b6d4","#f97316"].map((c) => (
                       <button key={c} onClick={() => updateRow(i, "color", c)}
@@ -609,6 +639,8 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                     <input type="color" value={row.color} onChange={(e) => updateRow(i, "color", e.target.value)}
                       className="w-3.5 h-3.5 rounded-full cursor-pointer border-0 p-0 bg-transparent" />
                   </div>
+
+                  {/* Divisor per garis */}
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="text-[8px] text-slate-400 font-black uppercase mr-1">÷</span>
                     {[1, 10, 100, 1000].map((d) => (
@@ -617,6 +649,18 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                           row.divisor === d ? "bg-indigo-500 border-indigo-500 text-white" : "bg-transparent border-slate-200 dark:border-slate-600 text-slate-400"
                         }`}>
                         {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Decimal per garis */}
+                  <div className="flex gap-1 flex-wrap">
+                    {DECIMAL_OPTIONS.map((d) => (
+                      <button key={d.value} onClick={() => updateRow(i, "decimalPlaces", d.value)}
+                        className={`px-1.5 py-0.5 rounded text-[8px] font-black border cursor-pointer transition-all ${
+                          row.decimalPlaces === d.value ? "bg-blue-500 border-blue-500 text-white" : "bg-transparent border-slate-200 dark:border-slate-600 text-slate-400"
+                        }`}>
+                        {d.label}
                       </button>
                     ))}
                   </div>
@@ -650,14 +694,13 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           <div className="space-y-2">
             <div className={sec}>Thresholds</div>
             <p className="text-[9px] text-slate-400">
-              Warna berubah saat nilai melewati threshold (dibandingkan nilai setelah divisor).
+              Dibandingkan terhadap nilai <span className="font-bold">setelah dibagi divisor</span>.
             </p>
-
-            <div className="space-y-1">
-              <p className="text-[9px] font-black text-slate-400">Warna Base</p>
-              <ColorSwatch field="color" value={item.color} />
+            <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-700">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color ?? defaultColor(item.type) }} />
+              <span className="text-[9px] font-black text-slate-500 flex-1">Base (default)</span>
+              <span className="text-[9px] font-mono text-slate-400">—</span>
             </div>
-
             {[...thresholds]
               .map((t, i) => ({ ...t, _i: i }))
               .sort((a, b) => a.value - b.value)
@@ -667,19 +710,16 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
                     className="w-6 h-6 rounded-full cursor-pointer border-0 p-0 bg-transparent shrink-0" />
                   <input type="number"
                     className="flex-1 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[11px] font-mono font-bold outline-none border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 min-w-0"
-                    placeholder="Nilai" value={tVal}
-                    onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))} />
+                    placeholder="Nilai" value={tVal} onChange={(e) => updateThreshold(_i, "value", Number(e.target.value))} />
                   <input
                     className="w-16 bg-slate-50 dark:bg-slate-900/60 rounded-md px-2 py-1 text-[10px] font-medium outline-none border border-slate-100 dark:border-slate-700 text-slate-500 min-w-0"
-                    placeholder="Label" value={tLabel ?? ""}
-                    onChange={(e) => updateThreshold(_i, "label", e.target.value)} />
+                    placeholder="Label" value={tLabel ?? ""} onChange={(e) => updateThreshold(_i, "label", e.target.value)} />
                   <button onClick={() => removeThreshold(_i)}
                     className="p-1 text-rose-400 hover:text-rose-600 rounded transition-colors border-none bg-transparent cursor-pointer shrink-0">
                     <X className="w-3 h-3" />
                   </button>
                 </div>
               ))}
-
             <button onClick={addThreshold}
               className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 text-[9px] font-black text-slate-400 hover:border-blue-300 hover:text-blue-500 transition-all cursor-pointer bg-transparent">
               <Plus className="w-3 h-3" /> Tambah Threshold
