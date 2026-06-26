@@ -20,6 +20,7 @@ export interface WidgetItem {
   keys?: string[];
   colors?: string[];
   keyDecimals?: number[];
+  /** Pembagi nilai per key untuk area chart multi-key */
   keyDivisors?: number[];
   label: string;
   type: WidgetType;
@@ -30,8 +31,19 @@ export interface WidgetItem {
   max?: number;
   onValue?: string;
   color?: string;
-  offColor?: string;
+  /**
+   * Pembagi nilai raw dari sensor.
+   * Contoh: raw=300, divisor=10 → nilai tampil = 30
+   * Default: 1 (tidak dibagi)
+   */
   divisor?: number;
+  /**
+   * Jumlah digit desimal yang ditampilkan setelah dibagi.
+   * -1 = Auto (tampil apa adanya)
+   *  0 = bulat
+   *  1 = 0.0
+   *  2 = 0.00
+   */
   decimalPlaces?: number;
   thresholds?: ThresholdItem[];
   gridPos?: GridPos;
@@ -54,13 +66,38 @@ export const WIDGET_TYPES: {
   { value: "bar",    label: "Bar",    desc: "Grafik batang historis",   icon: "bar",         defaultSize: "medium" },
 ];
 
-// ─── Value transform helpers ──────────────────────────────────────────────────
+// ─── Value transform helper ───────────────────────────────────────────────────
 
 /**
- * Cek apakah raw value valid (bukan null, undefined, string kosong, atau whitespace).
- * HMI Haiwell kadang kirim string kosong "" saat nilai belum terbaca dari PLC.
+ * Terapkan divisor lalu format ke decimalPlaces.
+ * Contoh: applyTransform(300, 10, 1) → "30.0"
+ *         applyTransform(300, 1, -1)  → "300"
+ *         applyTransform(300, 10, 0)  → "30"
  */
-function isValidValue(value: any): boolean {
+export function applyTransform(
+  value: any,
+  divisor?: number,
+  decimalPlaces?: number
+): string {
+  if (value === null || value === undefined) return "—";
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+
+  const div    = divisor && divisor !== 0 ? divisor : 1;
+  const result = num / div;
+
+  if (decimalPlaces === undefined || decimalPlaces < 0) {
+    // Auto: hilangkan trailing zero yang tidak perlu
+    return String(parseFloat(result.toPrecision(10)));
+  }
+  return result.toFixed(decimalPlaces);
+}
+
+
+/**
+ * Cek apakah raw value valid (bukan null, undefined, string kosong, atau non-numerik).
+ */
+export function isValidValue(value: any): boolean {
   if (value === null || value === undefined) return false;
   const str = String(value).trim();
   if (str === "" || str === "-") return false;
@@ -68,34 +105,14 @@ function isValidValue(value: any): boolean {
 }
 
 /**
- * Terapkan divisor ke raw value. Return NaN jika value tidak valid.
- * Aman terhadap string kosong dari HMI.
+ * Terapkan divisor ke nilai numerik (tanpa format string).
+ * Dipakai untuk kalkulasi threshold, gauge fill, dll.
  */
 export function applyDivisor(value: any, divisor?: number): number {
-  if (!isValidValue(value)) return NaN;
-  const num = Number(String(value).trim());
+  const num = Number(value ?? 0);
+  if (isNaN(num)) return 0;
   const div = divisor && divisor !== 0 ? divisor : 1;
   return num / div;
-}
-
-/**
- * Format raw value untuk display. Return "—" jika value tidak valid.
- * Handles: null, undefined, string kosong "", whitespace " ", non-numeric.
- */
-export function applyTransform(
-  value: any,
-  divisor?: number,
-  decimalPlaces?: number
-): string {
-  if (!isValidValue(value)) return "—";
-  const num    = Number(String(value).trim());
-  const div    = divisor && divisor !== 0 ? divisor : 1;
-  const result = num / div;
-
-  if (decimalPlaces === undefined || decimalPlaces < 0) {
-    return String(parseFloat(result.toPrecision(10)));
-  }
-  return result.toFixed(decimalPlaces);
 }
 
 // ─── Default grid sizes ───────────────────────────────────────────────────────
@@ -143,6 +160,9 @@ export function getActiveRange(rangeValue?: string) {
 
 // ─── Threshold ────────────────────────────────────────────────────────────────
 
+/**
+ * Threshold dibandingkan terhadap nilai SETELAH dibagi divisor.
+ */
 export function resolveThresholdColor(
   value: any,
   thresholds: ThresholdItem[] | undefined,
@@ -151,7 +171,7 @@ export function resolveThresholdColor(
 ): string {
   if (!thresholds || thresholds.length === 0) return baseColor;
   const num = applyDivisor(value, divisor);
-  if (isNaN(num)) return baseColor; // value kosong → pakai warna base
+  if (isNaN(num)) return baseColor;
   const sorted = [...thresholds].sort((a, b) => a.value - b.value);
   let active = baseColor;
   for (const t of sorted) {
@@ -160,44 +180,95 @@ export function resolveThresholdColor(
   return active;
 }
 
-// ─── Chart data ───────────────────────────────────────────────────────────────
+// ─── Chart data dengan time-bucketing ────────────────────────────────────────
+//
+// Bucket size per range (standar Grafana/InfluxDB):
+//   1h  → per 1 menit  → max ~60 titik
+//   6h  → per 5 menit  → max ~72 titik
+//   24h → per 15 menit → max ~96 titik
+//   7d  → per 1 jam    → max ~168 titik
+//   30d → per 6 jam    → max ~120 titik
+//
+// Setiap bucket = rata-rata semua data dalam window tersebut.
+// Bucket aktif (terakhir/belum penuh) update real-time otomatis.
+
+const BUCKET_MS: Record<string, number> = {
+  "1h":  1  * 60 * 1000,
+  "6h":  5  * 60 * 1000,
+  "24h": 15 * 60 * 1000,
+  "7d":  60 * 60 * 1000,
+  "30d": 6  * 60 * 60 * 1000,
+};
+
+function formatBucketTime(ts: number, rangeMs: number): string {
+  const d = new Date(ts);
+  if (rangeMs >= 7 * 24 * 60 * 60 * 1000) {
+    // 7d / 30d: "12 Jun 14:00"
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" })
+      + " " + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  }
+  // 1h / 6h / 24h: "14:05"
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
 
 export function getChartData(item: WidgetItem, logs: any[]) {
   const rangeOpt = getActiveRange(item.range);
   const cutoff   = Date.now() - rangeOpt.ms;
+  const bucketMs = BUCKET_MS[item.range ?? "1h"] ?? BUCKET_MS["1h"];
   const isMulti  = item.type === "chart" && (item.keys?.length ?? 0) > 1;
 
-  const filtered = logs.filter((l) => l.created_at && new Date(l.created_at).getTime() >= cutoff);
-  const sampled  = filtered.length > 200 ? filtered.slice(-200) : filtered;
+  const filtered = logs.filter(
+    (l) => l.created_at && new Date(l.created_at).getTime() >= cutoff
+  );
+  if (filtered.length === 0) return [];
 
-  return sampled.map((l) => {
-    const time = rangeOpt.ms > 24 * 60 * 60 * 1000
-      ? new Date(l.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })
-      : new Date(l.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  // Kelompokkan ke bucket
+  const buckets = new Map<number, any[]>();
+  for (const l of filtered) {
+    const ts     = new Date(l.created_at).getTime();
+    const bucket = Math.floor(ts / bucketMs) * bucketMs;
+    if (!buckets.has(bucket)) buckets.set(bucket, []);
+    buckets.get(bucket)!.push(l);
+  }
 
-    if (isMulti) {
-      const point: any = { time };
-      item.keys!.forEach((k, i) => {
-        const raw = l.payload?.[k];
-        const div = item.keyDivisors?.[i] ?? 1;
-        // Skip nilai kosong di chart — null agar recharts tidak plot titik
-        point[k] = isValidValue(raw) ? Number(raw) / (div || 1) : null;
-      });
-      return point;
-    }
+  // Sort ascending dan hitung rata-rata per bucket
+  return Array.from(buckets.keys())
+    .sort((a, b) => a - b)
+    .map((bucketTs) => {
+      const group = buckets.get(bucketTs)!;
+      const time  = formatBucketTime(bucketTs, rangeOpt.ms);
 
-    const raw = l.payload?.[item.key];
-    const div = item.divisor ?? 1;
-    // null agar recharts tidak plot titik untuk data kosong
-    return { time, val: isValidValue(raw) ? Number(raw) / (div || 1) : null };
-  });
+      if (isMulti) {
+        const point: any = { time };
+        item.keys!.forEach((k, i) => {
+          const div    = item.keyDivisors?.[i] ?? 1;
+          const vals   = group
+            .map((l) => l.payload?.[k])
+            .filter((v) => isValidValue(v))
+            .map((v) => Number(v) / (div || 1));
+          point[k] = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+        });
+        return point;
+      }
+
+      const div  = item.divisor ?? 1;
+      const vals = group
+        .map((l) => l.payload?.[item.key])
+        .filter((v) => isValidValue(v))
+        .map((v) => Number(v) / (div || 1));
+
+      return {
+        time,
+        val: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+      };
+    });
 }
 
 export function getSparklineData(item: WidgetItem, logs: any[]) {
   return logs.slice(-20).map((l) => {
-    const raw = l.payload?.[item.key];
+    const raw = Number(l.payload?.[item.key] ?? 0);
     const div = item.divisor ?? 1;
-    return { val: isValidValue(raw) ? Number(raw) / (div || 1) : 0 };
+    return { val: div && div !== 0 ? raw / div : raw };
   });
 }
 
@@ -213,7 +284,6 @@ export function getLatestPayload(logs: any[]): Record<string, any> {
 export function isStatusOn(value: any, onValue?: string): boolean {
   if (value === null || value === undefined) return false;
   const v = String(value).toLowerCase().trim();
-  if (v === "") return false; // string kosong dari HMI → OFF
   if (onValue) return v === onValue.toLowerCase().trim();
   return v === "1" || v === "true" || v === "on" || v === "yes";
 }

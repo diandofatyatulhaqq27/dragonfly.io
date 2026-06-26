@@ -9,7 +9,7 @@ import { Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity, Plus, X, Sett
 import {
   WidgetItem, WIDGET_TYPES, SIZE_OPTIONS, RANGE_OPTIONS,
   getActiveRange, getChartData, getSparklineData,
-  isStatusOn, defaultColor, resolveThresholdColor, applyTransform, applyDivisor, ThresholdItem,
+  isStatusOn, defaultColor, resolveThresholdColor, applyTransform, applyDivisor, isValidValue, ThresholdItem,
 } from "@/lib/widget-config";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
