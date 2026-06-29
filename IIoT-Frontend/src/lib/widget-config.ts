@@ -192,14 +192,26 @@ function formatBucketTime(ts: number, rangeMs: number): string {
   const d = new Date(ts);
   if (rangeMs >= 7 * 24 * 60 * 60 * 1000) {
     // 7d / 30d: tampilkan tanggal "12 Jun"
-    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+    return d.toLocaleDateString("id-ID", { 
+      day: "2-digit", 
+      month: "short",
+      timeZone: "Asia/Jakarta"
+    });
   }
   if (rangeMs >= 24 * 60 * 60 * 1000) {
     // 24h / 6h: tampilkan jam "14:00"
-    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString("id-ID", { 
+      hour: "2-digit", 
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta"
+    });
   }
   // 1h: tampilkan menit "14:05"
-  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("id-ID", { 
+    hour: "2-digit", 
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta"
+  });
 }
 
 export function getChartData(item: WidgetItem, logs: any[]) {
