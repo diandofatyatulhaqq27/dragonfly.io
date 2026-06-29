@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   ResponsiveContainer, AreaChart, Area,
   BarChart, Bar, XAxis, YAxis,
@@ -8,7 +8,7 @@ import {
 import { Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity, Plus, X, Settings2 } from "lucide-react";
 import {
   WidgetItem, WIDGET_TYPES, RANGE_OPTIONS,
-  getActiveRange, getChartData, getSparklineData,
+  getActiveRange, getSparklineData, fetchChartData,
   isStatusOn, defaultColor, resolveThresholdColor,
   applyTransform, applyDivisor, ThresholdItem,
 } from "@/lib/widget-config";
@@ -34,38 +34,54 @@ interface WidgetCardProps {
   isEditMode: boolean;
   isSelected: boolean;
   isOnline: boolean;
+  gatewayId: number | string;
   logs: any[];
   latestPayload: Record<string, any>;
   onSelect: (index: number) => void;
+  apiBase: string;
+  authHeaders: Record<string, string>;
 }
 
 // ─── Root card ───────────────────────────────────────────────────────────────
 
 export function WidgetCard({
-  item, index, isEditMode, isSelected, isOnline, logs, latestPayload, onSelect,
+  item, index, isEditMode, isSelected, isOnline, gatewayId,
+  logs, latestPayload, onSelect, apiBase, authHeaders,
 }: WidgetCardProps) {
   const isChart     = item.type === "chart" || item.type === "bar";
   const color       = item.color ?? defaultColor(item.type);
   const rawValue    = latestPayload[item.key];
   const activeColor = resolveThresholdColor(rawValue, item.thresholds, color, item.divisor);
 
-  const chartData = useMemo(() => {
-  if (!isChart) return [];
-  const data = getChartData(item, logs);
-  console.log("CHART DEBUG:", {
-    label: item.label,
-    key: item.key,
-    keys: item.keys,
-    range: item.range,
-    logsCount: logs.length,
-    sampleLog: logs[logs.length - 1],
-    chartDataCount: data.length,
-    chartDataSample: data[0],
-  });
-  return data;
-}, [item, logs, isChart]);
-  
-  const sparkData = useMemo(() => item.type === "trend" ? getSparklineData(item, logs) : [], [item, logs]);
+  // Sparkline pakai logs lokal (cukup 20 titik terakhir, sudah ada di logs)
+  const sparkData = useMemo(
+    () => item.type === "trend" ? getSparklineData(item, logs) : [],
+    [item, logs]
+  );
+
+  // Chart data fetch dari API dengan aggregasi PostgreSQL
+  const [chartData, setChartData] = useState<any[]>([]);
+  const fetchRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!isChart || !gatewayId) return;
+
+    const isMulti = item.type === "chart" && (item.keys?.length ?? 0) > 1;
+    const keys    = isMulti ? (item.keys ?? []) : (item.key ? [item.key] : []);
+    const divs    = isMulti ? (item.keyDivisors ?? keys.map(() => 1)) : [item.divisor ?? 1];
+
+    if (!keys.length) return;
+
+    // Abort request sebelumnya jika range/keys berubah
+    fetchRef.current?.abort();
+    fetchRef.current = new AbortController();
+
+    fetchChartData(gatewayId, item.range ?? "1h", keys, divs, apiBase, authHeaders)
+      .then(setChartData)
+      .catch(() => {});
+
+    return () => fetchRef.current?.abort();
+  }, [isChart, gatewayId, item.range, item.key, item.keys?.join(","), apiBase]);
 
   return (
     <div
@@ -501,7 +517,7 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
           </>
         )}
 
-        {/* Warna aksen (non-status, non-multi-chart) */}
+        {/* Warna aksen (non-status, non-gauge single) */}
         {!isStatus && (!isChart || item.type === "bar" || !isMultiKey) && (
           <div>
             <label className={lbl}>Warna Aksen</label>

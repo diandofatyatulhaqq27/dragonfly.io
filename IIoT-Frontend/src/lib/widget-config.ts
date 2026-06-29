@@ -20,6 +20,7 @@ export interface WidgetItem {
   keys?: string[];
   colors?: string[];
   keyDecimals?: number[];
+  /** Pembagi nilai per key untuk area chart multi-key */
   keyDivisors?: number[];
   label: string;
   type: WidgetType;
@@ -30,8 +31,21 @@ export interface WidgetItem {
   max?: number;
   onValue?: string;
   color?: string;
+  /** Warna saat status OFF (default #94a3b8) */
   offColor?: string;
+  /**
+   * Pembagi nilai raw dari sensor.
+   * Contoh: raw=300, divisor=10 → nilai tampil = 30
+   * Default: 1 (tidak dibagi)
+   */
   divisor?: number;
+  /**
+   * Jumlah digit desimal yang ditampilkan setelah dibagi.
+   * -1 = Auto (tampil apa adanya)
+   *  0 = bulat
+   *  1 = 0.0
+   *  2 = 0.00
+   */
   decimalPlaces?: number;
   thresholds?: ThresholdItem[];
   gridPos?: GridPos;
@@ -182,47 +196,28 @@ export function resolveThresholdColor(
 
 const BUCKET_MS: Record<string, number> = {
   "1h":  1  * 60 * 1000,
-  "6h":  60  * 60 * 1000,
-  "24h": 60 * 60 * 1000,
-  "7d":  24 * 60 * 60 * 1000,
-  "30d": 24 * 60 * 60 * 1000,
+  "6h":  5  * 60 * 1000,
+  "24h": 15 * 60 * 1000,
+  "7d":  60 * 60 * 1000,
+  "30d": 6  * 60 * 60 * 1000,
 };
 
 function formatBucketTime(ts: number, rangeMs: number): string {
   const d = new Date(ts);
   if (rangeMs >= 7 * 24 * 60 * 60 * 1000) {
-    // 7d / 30d: tampilkan tanggal "12 Jun"
-    return d.toLocaleDateString("id-ID", { 
-      day: "2-digit", 
-      month: "short",
-      timeZone: "Asia/Jakarta"
-    });
+    // 7d / 30d: "12 Jun 14:00"
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" })
+      + " " + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   }
-  if (rangeMs >= 24 * 60 * 60 * 1000) {
-    // 24h / 6h: tampilkan jam "14:00"
-    return d.toLocaleTimeString("id-ID", { 
-      hour: "2-digit", 
-      minute: "2-digit",
-      timeZone: "Asia/Jakarta"
-    });
-  }
-  // 1h: tampilkan menit "14:05"
-  return d.toLocaleTimeString("id-ID", { 
-    hour: "2-digit", 
-    minute: "2-digit",
-    timeZone: "Asia/Jakarta"
-  });
+  // 1h / 6h / 24h: "14:05"
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function getChartData(item: WidgetItem, logs: any[]) {
   const rangeOpt = getActiveRange(item.range);
+  const cutoff   = Date.now() - rangeOpt.ms;
   const bucketMs = BUCKET_MS[item.range ?? "1h"] ?? BUCKET_MS["1h"];
   const isMulti  = item.type === "chart" && (item.keys?.length ?? 0) > 1;
-
-  const latestTs = logs.length > 0
-    ? new Date(logs[logs.length - 1].created_at).getTime()
-    : Date.now();
-  const cutoff = latestTs - rangeOpt.ms;
 
   const filtered = logs.filter(
     (l) => l.created_at && new Date(l.created_at).getTime() >= cutoff
@@ -301,4 +296,44 @@ export function defaultColor(type: WidgetType): string {
     status: "#10b981", chart: "#3b82f6", bar: "#6366f1",
   };
   return map[type] ?? "#3b82f6";
+}
+
+// ─── Chart data via API (untuk area & bar chart) ──────────────────────────────
+// Menggantikan getChartData yang pakai logs lokal.
+// Dipanggil dari komponen dengan useEffect saat range/keys berubah.
+
+export async function fetchChartData(
+  gatewayId: number | string,
+  range: string,
+  keys: string[],          // MQTT keys yang mau di-fetch
+  divisors: number[],      // divisor per key, index-aligned
+  apiBase: string,
+  authHeaders: Record<string, string>,
+): Promise<{ time: string; [key: string]: any }[]> {
+  if (!keys.length) return [];
+
+  const params = new URLSearchParams({
+    range,
+    keys: keys.join(","),
+  });
+
+  const res = await fetch(
+    `${apiBase}/gateways/${gatewayId}/chart?${params}`,
+    { headers: authHeaders, cache: "no-store" }
+  );
+  if (!res.ok) return [];
+
+  const json = await res.json();
+  const rows: any[] = json.data ?? [];
+
+  // Apply divisor ke setiap nilai
+  return rows.map((row) => {
+    const point: any = { time: row.time };
+    keys.forEach((k, i) => {
+      const div = divisors[i] ?? 1;
+      const val = row[k];
+      point[k] = val !== null && val !== undefined ? val / (div || 1) : null;
+    });
+    return point;
+  });
 }
