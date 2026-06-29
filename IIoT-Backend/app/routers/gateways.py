@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from app.database import get_db
 from app.models import Gateway, Project, TelemetryLog
 from app.routers.auth import get_current_user
@@ -133,7 +134,8 @@ def update_gateway(gateway_id: int, payload: GatewaySchema, db: Session = Depend
         gateway.name = payload.name
         gateway.project_id = payload.project_id
         gateway.status = payload.status
-        gateway.config = payload.config
+        gateway.config = payload.config if payload.config is not None else []
+        flag_modified(gateway, "config")
         db.commit()
         return {"status": "success", "message": "Gateway berhasil diperbarui"}
     except Exception as e:
