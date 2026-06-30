@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
-import { Cpu, Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Building2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Cpu, Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Building2, Eye } from "lucide-react";
 import { API_BASE, getAuthHeaders, getLocalUser, isReadOnlyRole } from "@/lib/api";
 
 const DEFAULT_FORM = {
@@ -10,6 +11,8 @@ const DEFAULT_FORM = {
 };
 
 export default function GatewaysPage() {
+  const router = useRouter();
+
   const [gateways, setGateways] = useState<any[]>([]);
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +252,14 @@ export default function GatewaysPage() {
                     </td>
                     <td className="p-4">
                       <div className="flex justify-center gap-1.5">
+                        <button
+                          onClick={() => router.push(`/dashboard/gateways/${gateway.gateway_id}`)}
+                          className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md transition-all border-none bg-transparent cursor-pointer"
+                          title="Open Live Gateway Detail View"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
                         {!isReadOnly && (
                           <>
                             <button onClick={() => setEditingGateway({ ...gateway })} className="p-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-md transition-all border-none bg-transparent cursor-pointer" title="Modify Configuration">
