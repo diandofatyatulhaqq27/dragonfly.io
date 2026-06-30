@@ -225,6 +225,12 @@ def get_gateway_logs(
         query = query.filter(TelemetryLog.created_at <= end_dt)
 
     total = query.count()
+    
+    if start_date:
+        order_clause = TelemetryLog.created_at.asc()
+    if end_date:
+        order_clause = TelemetryLog.created_at.desc()
+        
 
     logs = (
         query
