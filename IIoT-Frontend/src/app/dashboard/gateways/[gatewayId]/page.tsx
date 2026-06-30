@@ -1,10 +1,7 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
-import {
-  ArrowLeft, Plus, LayoutGrid, Loader2,
-  ChevronLeft, ChevronRight, Cpu, Pencil, X, Check,
-} from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useParams } from "next/navigation";
+import { LayoutGrid, Loader2, Pencil, X, Check, Plus } from "lucide-react";
 import ReactGridLayout from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -17,33 +14,33 @@ const COLS  = 80;
 const ROW_H = 80;
 const GridLayout = ReactGridLayout as any;
 
-type RGLLayout = { i: string; x: number; y: number; w: number; h: number; minW?: number; minH?: number };
+type RGLLayout = {
+  i: string; x: number; y: number; w: number; h: number; minW?: number; minH?: number;
+};
 
 function itemToLayout(item: WidgetItem, index: number): RGLLayout {
   const gp = item.gridPos ?? defaultGridPos(item.type, index);
   return { i: String(index), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 1, minH: 1 };
 }
 
-export default function GatewayDetailPage() {
-  const router = useRouter();
-  const { projectId, gatewayId } = useParams();
+export default function SingleGatewayPage() {
+  const { gatewayId } = useParams();
 
-  const [logs,            setLogs]            = useState<any[]>([]);
-  const [gatewayInfo,     setGatewayInfo]     = useState<any>(null);
-  const [projectGateways, setProjectGateways] = useState<any[]>([]);
-  const [devices,         setDevices]         = useState<any[]>([]);
-  const [loading,         setLoading]         = useState(true);
+  const [logs,           setLogs]           = useState<any[]>([]);
+  const [gatewayInfo,    setGatewayInfo]    = useState<any>(null);
+  const [loading,        setLoading]        = useState(true);
 
-  const [isEditMode,      setIsEditMode]      = useState(false);
-  const [editConfig,      setEditConfig]      = useState<WidgetItem[]>([]);
-  const [selectedIdx,     setSelectedIdx]     = useState<number | null>(null);
-  const [layouts,         setLayouts]         = useState<RGLLayout[]>([]);
-  const [containerWidth,  setContainerWidth]  = useState(1200);
+  const [isEditMode,     setIsEditMode]     = useState(false);
+  const [editConfig,     setEditConfig]     = useState<WidgetItem[]>([]);
+  const [selectedIdx,    setSelectedIdx]    = useState<number | null>(null);
+  const [layouts,        setLayouts]        = useState<RGLLayout[]>([]);
+  const [chartDataMap,   setChartDataMap]   = useState<Record<string, any[]>>({});
+  const [containerWidth, setContainerWidth] = useState(1200);
 
-  // ── Floating settings panel drag state ───────────────────────────────────
+  // ── Floating panel drag state ─────────────────────────────────────────────
   const [panelPos,        setPanelPos]        = useState({ x: 100, y: 80 });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
+  const dragOffset = React.useRef({ x: 0, y: 0 });
 
   const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
 
@@ -68,11 +65,14 @@ export default function GatewayDetailPage() {
     const onUp = () => setIsDraggingPanel(false);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup",   onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
+    };
   }, [isDraggingPanel]);
 
-  // ── Grid container width tracking ────────────────────────────────────────
-  const gridRef = useRef<HTMLDivElement>(null);
+  // ── Grid container width ──────────────────────────────────────────────────
+  const gridRef = React.useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!gridRef.current) return;
     const obs = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width));
@@ -80,44 +80,72 @@ export default function GatewayDetailPage() {
     return () => obs.disconnect();
   }, []);
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
-  const fetchAllData = useCallback(async () => {
-    if (!projectId || !gatewayId) return;
-    try {
-      const [resGw, resProject, resDev] = await Promise.all([
-        fetch(`${API_BASE}/gateways/${gatewayId}`,              { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/projects/${projectId}`,              { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/devices/?gateway_id=${gatewayId}`,   { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-      ]);
+  // ── Fetch chart data dari backend (pre-aggregated) ────────────────────────
+  const fetchChartDataForWidgets = useCallback(async (configList: WidgetItem[]) => {
+    if (!gatewayId || !configList.length) return;
 
-      if (resGw.ok) {
-        const r = await resGw.json();
+    const chartWidgets = configList.filter((item) => item.type === "chart" || item.type === "bar");
+    if (!chartWidgets.length) return;
+
+    const newMap: Record<string, any[]> = {};
+
+    await Promise.all(
+      chartWidgets.map(async (item, idx) => {
+        const isMulti   = item.type === "chart" && (item.keys?.length ?? 0) > 1;
+        const keysParam = isMulti ? item.keys!.join(",") : item.key;
+        const range     = item.range ?? "1h";
+        if (!keysParam) return;
+
+        // ✅ FIX: pakai idx bukan index
+        const mapKey = `${item.type}-${idx}-${item.key}`;
+
+        try {
+          const res = await fetch(
+            `${API_BASE}/gateways/${gatewayId}/chart?range=${range}&keys=${keysParam}`,
+            { method: "GET", cache: "no-store", headers: getAuthHeaders() }
+          );
+          if (res.ok) {
+            const r = await res.json();
+            newMap[mapKey] = r.data ?? [];
+          }
+        } catch (err) {
+          console.error(`Chart fetch error (idx ${idx}):`, err);
+        }
+      })
+    );
+
+    setChartDataMap((prev) => ({ ...prev, ...newMap }));
+  }, [gatewayId]);
+
+  // ── Polling gateway data ──────────────────────────────────────────────────
+  const fetchAllData = useCallback(async () => {
+    if (!gatewayId) return;
+    try {
+      const res = await fetch(`${API_BASE}/gateways/${gatewayId}`, {
+        method: "GET", cache: "no-store", headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const r    = await res.json();
         const data = r.data;
         if (data) {
           setGatewayInfo(data);
           setLogs(data.logs ?? []);
+          const cfg: WidgetItem[] = data.config ?? [];
           if (!isEditMode) {
-            const cfg: WidgetItem[] = data.config ?? [];
             setEditConfig(cfg);
             setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
+            fetchChartDataForWidgets(cfg);
+          } else {
+            fetchChartDataForWidgets(editConfig);
           }
         }
-      }
-      if (resProject.ok) {
-        const r = await resProject.json();
-        const gws: any[] = r.data?.gateways ?? [];
-        setProjectGateways([...gws].sort((a, b) => (a.gateway_id ?? a.id ?? 0) - (b.gateway_id ?? b.id ?? 0)));
-      }
-      if (resDev.ok) {
-        const r = await resDev.json();
-        setDevices(r.data ?? []);
       }
     } catch (err) {
       console.error("fetchAllData error:", err);
     } finally {
       setLoading(false);
     }
-  }, [projectId, gatewayId, isEditMode]);
+  }, [gatewayId, isEditMode, editConfig, fetchChartDataForWidgets]);
 
   useEffect(() => {
     fetchAllData();
@@ -125,16 +153,12 @@ export default function GatewayDetailPage() {
     return () => clearInterval(iv);
   }, [fetchAllData]);
 
-  const currentIndex = projectGateways.findIndex(
-    (g) => String(g.gateway_id ?? g.id) === String(gatewayId)
-  );
-
   const isOnline = (() => {
     if (!gatewayInfo?.last_ping) return false;
     return (Date.now() - new Date(gatewayInfo.last_ping).getTime()) / 1000 < 60;
   })();
 
-  // ── Grid layout change ────────────────────────────────────────────────────
+  // ── Layout change ─────────────────────────────────────────────────────────
   const onLayoutChange = (newLayout: RGLLayout[]) => {
     setLayouts(newLayout);
     setEditConfig((prev) => prev.map((item, i) => {
@@ -149,7 +173,7 @@ export default function GatewayDetailPage() {
     if (isReadOnly) return;
     const newItem: WidgetItem = { key: "", label: "", type: "value", unit: "", size: "small", range: "1h" };
     const newIdx = editConfig.length;
-    const gp = defaultGridPos("value", newIdx);
+    const gp     = defaultGridPos("value", newIdx);
     newItem.gridPos = gp;
     setEditConfig([...editConfig, newItem]);
     setLayouts([...layouts, { i: String(newIdx), x: gp.x, y: gp.y, w: gp.w, h: gp.h, minW: 1, minH: 1 }]);
@@ -171,6 +195,10 @@ export default function GatewayDetailPage() {
     setEditConfig((prev) => {
       const updated = [...prev];
       (updated[i] as any)[field] = val;
+      // Re-fetch chart jika range/key berubah
+      if (field === "range" || field === "key" || field === "keys") {
+        fetchChartDataForWidgets(updated);
+      }
       return updated;
     });
   };
@@ -186,7 +214,7 @@ export default function GatewayDetailPage() {
           gateway_id: Number(gatewayId),
           name:       gatewayInfo?.name ?? "",
           hmi_code:   gatewayInfo?.hmi_code ?? null,
-          project_id: Number(projectId),
+          project_id: gatewayInfo?.project_id ? Number(gatewayInfo.project_id) : null,
           status:     gatewayInfo?.status ?? "offline",
           config:     editConfig,
         }),
@@ -210,12 +238,12 @@ export default function GatewayDetailPage() {
     setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
   };
 
-  // ── Loading state ─────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading && !gatewayInfo) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        <p className="mt-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Syncing telemetry...</p>
+        <p className="mt-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Syncing stream...</p>
       </div>
     );
   }
@@ -232,7 +260,6 @@ export default function GatewayDetailPage() {
           className="fixed z-[100] w-72 bg-white dark:bg-slate-800 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-2xl flex flex-col"
           style={{ left: panelPos.x, top: panelPos.y, maxHeight: "80vh" }}
         >
-          {/* Drag handle */}
           <div
             onMouseDown={onPanelMouseDown}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white cursor-grab active:cursor-grabbing shrink-0 select-none rounded-t-2xl"
@@ -291,63 +318,35 @@ export default function GatewayDetailPage() {
 
         {/* ── HEADER ───────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-200 dark:border-slate-700">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push("/dashboard/projects")}
-              className="p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all bg-white dark:bg-slate-800 cursor-pointer">
-              <ArrowLeft className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-lg font-black tracking-tighter text-slate-800 dark:text-slate-100 uppercase italic">
-                  {gatewayInfo?.name ?? "Loading..."}
-                </h1>
-                <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${
-                  isOnline
-                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border-emerald-200 animate-pulse"
-                    : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 border-rose-200"
-                }`}>
-                  {isOnline ? "● Active Stream" : "○ Link Offline"}
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-lg font-black tracking-tighter text-slate-800 dark:text-slate-100 uppercase italic">
+                {gatewayInfo?.name ?? "Loading..."}
+              </h1>
+              <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${
+                isOnline
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border-emerald-200 animate-pulse"
+                  : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 border-rose-200"
+              }`}>
+                {isOnline ? "● Active Stream" : "○ Link Offline"}
+              </span>
+              {gatewayInfo?.hmi_code && (
+                <span className="px-1.5 py-0.5 rounded-md text-[8px] font-mono font-black text-blue-600 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 uppercase">
+                  HMI: {gatewayInfo.hmi_code}
                 </span>
-                {gatewayInfo?.hmi_code && (
-                  <span className="px-1.5 py-0.5 rounded-md text-[8px] font-mono font-black text-blue-600 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 uppercase">
-                    HMI: {gatewayInfo.hmi_code}
-                  </span>
-                )}
-              </div>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                Project #{projectId} · Gateway #{gatewayId} · {devices.length} Device
-              </p>
+              )}
             </div>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+              Gateway #{gatewayId}
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {projectGateways.length > 1 && (
-              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 rounded-xl shadow-sm h-9">
-                <button
-                  onClick={() => currentIndex > 0 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex-1].gateway_id ?? projectGateways[currentIndex-1].id}`)}
-                  disabled={currentIndex <= 0}
-                  className="p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer transition-all border-none bg-transparent text-slate-700 dark:text-slate-300 h-full flex items-center">
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <div className="px-1 flex items-center gap-1 text-slate-700 dark:text-slate-300 font-black text-[9px] uppercase tracking-wider italic whitespace-nowrap">
-                  <Cpu className="w-3 h-3 text-blue-500" /> Node {currentIndex + 1} / {projectGateways.length}
-                </div>
-                <button
-                  onClick={() => currentIndex < projectGateways.length - 1 && router.push(`/dashboard/projects/${projectId}/${projectGateways[currentIndex+1].gateway_id ?? projectGateways[currentIndex+1].id}`)}
-                  disabled={currentIndex >= projectGateways.length - 1}
-                  className="p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer transition-all border-none bg-transparent text-slate-700 dark:text-slate-300 h-full flex items-center">
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {!isReadOnly && !isEditMode && (
-              <button onClick={() => setIsEditMode(true)} title="Edit Layout"
-                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-all shadow-sm cursor-pointer">
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {!isReadOnly && !isEditMode && (
+            <button onClick={() => setIsEditMode(true)} title="Edit Layout"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-all shadow-sm cursor-pointer">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* ── GRID ─────────────────────────────────────────────────────────── */}
@@ -373,32 +372,44 @@ export default function GatewayDetailPage() {
               containerPadding={[0, 0]}
               resizeHandles={["se"]}
             >
-              {editConfig.map((item, index) => (
-                <div key={String(index)} className="relative">
-                  {isEditMode && (
-                    <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
-                      <div className="flex gap-0.5">
-                        {[...Array(6)].map((_, i) => (
-                          <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />
-                        ))}
+              {editConfig.map((item, index) => {
+                // ✅ FIX: key konsisten dengan yang dipakai di fetchChartDataForWidgets
+                const chartWidgetIdx = editConfig
+                  .filter((w) => w.type === "chart" || w.type === "bar")
+                  .findIndex((_, i) => {
+                    const chartItems = editConfig.filter((w) => w.type === "chart" || w.type === "bar");
+                    return chartItems[i] === item;
+                  });
+                const mapKey = (item.type === "chart" || item.type === "bar")
+                  ? `${item.type}-${chartWidgetIdx}-${item.key}`
+                  : "";
+                const serverChartData = mapKey ? (chartDataMap[mapKey] ?? []) : [];
+
+                return (
+                  <div key={String(index)} className="relative">
+                    {isEditMode && (
+                      <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
+                        <div className="flex gap-0.5">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  <WidgetCard
-                    item={item}
-                    index={index}
-                    isEditMode={isEditMode}
-                    isSelected={selectedIdx === index}
-                    isOnline={isOnline}
-                    gatewayId={String(gatewayId)}
-                    logs={logs}
-                    latestPayload={latestPayload}
-                    onSelect={setSelectedIdx}
-                    apiBase={API_BASE}
-                    authHeaders={getAuthHeaders()}
-                  />
-                </div>
-              ))}
+                    )}
+                    <WidgetCard
+                      item={item}
+                      index={index}
+                      isEditMode={isEditMode}
+                      isSelected={selectedIdx === index}
+                      isOnline={isOnline}
+                      logs={logs}
+                      latestPayload={latestPayload}
+                      onSelect={setSelectedIdx}
+                      serverChartData={serverChartData}
+                    />
+                  </div>
+                );
+              })}
             </GridLayout>
           )}
         </div>
