@@ -404,9 +404,9 @@ function InvitationCodeCell({ code }: { code: string }) {
                         <td className="p-4 font-black uppercase text-slate-800 dark:text-slate-200 tracking-tight">{item.name}</td>
                         <td className="p-4 font-bold text-slate-500 dark:text-slate-400 uppercase">{item.address}</td>
                         <td className="p-4">
-                          <td className="font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30">
+                          <div className="font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30">
                           <InvitationCodeCell code={item.invitation_code} />
-                          </td>
+                          </div>
                         </td>
                       </>
                     )}
