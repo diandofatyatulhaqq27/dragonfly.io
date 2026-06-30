@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban } from "lucide-react";
+import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown } from "lucide-react";
+import * as Select from "@radix-ui/react-select";
 import { API_BASE, getAuthHeaders, getLocalUser, isReadOnlyRole } from "@/lib/api";
 
 const DEFAULT_FORM = {
@@ -9,6 +10,58 @@ const DEFAULT_FORM = {
   name: "",
   project_id: "",
 };
+
+// ─── Reusable styled project dropdown (Radix Select, portal-based) ─────────
+function ProjectSelect({
+  value,
+  onValueChange,
+  projectsList,
+  placeholder = "Pilih project...",
+}: {
+  value: string;
+  onValueChange: (val: string) => void;
+  projectsList: any[];
+  placeholder?: string;
+}) {
+  return (
+    <Select.Root value={value || undefined} onValueChange={onValueChange}>
+      <Select.Trigger
+        className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] font-black border-none ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-800 dark:text-slate-200 flex items-center justify-between cursor-pointer outline-none focus:ring-2 focus:ring-blue-600 data-[placeholder]:text-slate-400"
+      >
+        <Select.Value placeholder={placeholder} />
+        <Select.Icon>
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+        </Select.Icon>
+      </Select.Trigger>
+
+      <Select.Portal>
+        <Select.Content
+          position="popper"
+          sideOffset={6}
+          className="z-[80] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden w-[var(--radix-select-trigger-width)] max-h-60"
+        >
+          <Select.Viewport className="p-1">
+            {projectsList.length === 0 && (
+              <div className="px-3 py-2 text-[11px] font-bold text-slate-400">Loading projects...</div>
+            )}
+            {projectsList.map((p) => (
+              <Select.Item
+                key={p.project_id}
+                value={String(p.project_id)}
+                className="px-3 py-2.5 text-[11px] font-black rounded-lg cursor-pointer outline-none flex items-center justify-between gap-2 text-slate-700 dark:text-slate-200 data-[highlighted]:bg-blue-50 dark:data-[highlighted]:bg-blue-950/40 data-[highlighted]:text-blue-700 dark:data-[highlighted]:text-blue-400 data-[state=checked]:font-black"
+              >
+                <Select.ItemText>{p.display_name.toUpperCase()}</Select.ItemText>
+                <Select.ItemIndicator>
+                  <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                </Select.ItemIndicator>
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  );
+}
 
 export default function GatewaysPage() {
   const router = useRouter();
@@ -288,8 +341,8 @@ export default function GatewaysPage() {
       {/* ── MODAL: CREATE GATEWAY ─────────────────────────────────────────── */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/40">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/40 rounded-t-2xl">
               <h2 className="font-black text-[11px] uppercase tracking-widest text-slate-800 dark:text-slate-100 italic flex items-center gap-2">
                 <HardDrive className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Add new gateway
               </h2>
@@ -308,12 +361,12 @@ export default function GatewaysPage() {
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 ml-1">Bind to Project Site</label>
-                <select className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] font-black border-none ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-600 outline-none cursor-pointer" value={newGatewayForm.project_id} onChange={(e) => setNewGatewayForm({ ...newGatewayForm, project_id: e.target.value })} required>
-                  {projectsList.length === 0 && <option value="" disabled>Loading projects...</option>}
-                  {projectsList.map((p) => (
-                    <option key={p.project_id} value={String(p.project_id)}>{p.display_name.toUpperCase()}</option>
-                  ))}
-                </select>
+                <ProjectSelect
+                  value={newGatewayForm.project_id}
+                  onValueChange={(val) => setNewGatewayForm({ ...newGatewayForm, project_id: val })}
+                  projectsList={projectsList}
+                  placeholder="Pilih project..."
+                />
               </div>
               <div className="pt-2 flex gap-2">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
@@ -327,8 +380,8 @@ export default function GatewaysPage() {
       {/* ── MODAL: EDIT GATEWAY ───────────────────────────────────────────── */}
       {editingGateway && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/40">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/40 rounded-t-2xl">
               <h2 className="font-black text-[11px] uppercase tracking-widest text-slate-800 dark:text-slate-100 italic flex items-center gap-2">
                 <Edit2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Edit Hardware Meta
               </h2>
@@ -347,11 +400,12 @@ export default function GatewaysPage() {
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 ml-1">Assigned Site Project</label>
-                <select className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] font-black border-none ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-600 outline-none cursor-pointer" value={String(editingGateway.project_id ?? "")} onChange={(e) => setEditingGateway({ ...editingGateway, project_id: e.target.value })}>
-                  {projectsList.map((p) => (
-                    <option key={p.project_id} value={String(p.project_id)}>{p.display_name.toUpperCase()}</option>
-                  ))}
-                </select>
+                <ProjectSelect
+                  value={String(editingGateway.project_id ?? "")}
+                  onValueChange={(val) => setEditingGateway({ ...editingGateway, project_id: val })}
+                  projectsList={projectsList}
+                  placeholder="Pilih project..."
+                />
               </div>
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setEditingGateway(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
