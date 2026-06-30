@@ -7,6 +7,8 @@ from app.models import Gateway, Project, TelemetryLog
 from app.routers.auth import get_current_user
 from typing import Optional, List, Any
 import re
+import pytz
+from datetime import datetime
 
 router = APIRouter(prefix="/api/gateways", tags=["Gateways"])
 
@@ -214,10 +216,13 @@ def get_gateway_logs(
 
     query = db.query(TelemetryLog).filter(TelemetryLog.gateway_id == gateway_id)
 
+    WIB = pytz.timezone("Asia/Jakarta")
     if start_date:
-        query = query.filter(TelemetryLog.created_at >= f"{start_date} 00:00:00")
+        start_dt = WIB.localize(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S"))
+        query = query.filter(TelemetryLog.created_at >= start_dt)
     if end_date:
-        query = query.filter(TelemetryLog.created_at <= f"{end_date} 23:59:59")
+        end_dt = WIB.localize(datetime.strptime(f"{end_date} 23:59:59", "%Y-%m-%d %H:%M:%S"))
+        query = query.filter(TelemetryLog.created_at <= end_dt)
 
     total = query.count()
 
