@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown } from "lucide-react";
+import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown, ChevronUp } from "lucide-react";
 import * as Select from "@radix-ui/react-select";
 import { API_BASE, getAuthHeaders, getLocalUser, isReadOnlyRole } from "@/lib/api";
 
@@ -40,6 +40,10 @@ function ProjectSelect({
           sideOffset={6}
           className="z-[80] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden w-[var(--radix-select-trigger-width)] max-h-60"
         >
+          <Select.ScrollUpButton className="flex items-center justify-center py-1.5 bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-default">
+            <ChevronUp className="w-3.5 h-3.5" />
+          </Select.ScrollUpButton>
+
           <Select.Viewport className="p-1">
             {projectsList.length === 0 && (
               <div className="px-3 py-2 text-[11px] font-bold text-slate-400">Loading projects...</div>
@@ -57,6 +61,10 @@ function ProjectSelect({
               </Select.Item>
             ))}
           </Select.Viewport>
+
+          <Select.ScrollDownButton className="flex items-center justify-center py-1.5 bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-default">
+            <ChevronDown className="w-3.5 h-3.5" />
+          </Select.ScrollDownButton>
         </Select.Content>
       </Select.Portal>
     </Select.Root>
