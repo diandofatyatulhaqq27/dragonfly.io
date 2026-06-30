@@ -315,13 +315,6 @@ export default function GatewaysPage() {
                   ))}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 ml-1">Link Status (Otomatis)</label>
-                <div className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 border-none ring-1 ring-slate-100 dark:ring-slate-700/50 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
-                  OFFLINE — Otomatis ONLINE saat menerima data MQTT pertama
-                </div>
-              </div>
               <div className="pt-2 flex gap-2">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
                 <button type="submit" className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all">Register Link</button>
@@ -359,13 +352,6 @@ export default function GatewaysPage() {
                     <option key={p.project_id} value={String(p.project_id)}>{p.display_name.toUpperCase()}</option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 ml-1">Hardware Link Status (Otomatis)</label>
-                <div className={`w-full p-3 rounded-xl text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 ${editingGateway.status === "online" ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40" : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40"}`}>
-                  ● {editingGateway.status ?? "offline"}
-                  <span className="ml-auto font-medium text-[8px] opacity-70 normal-case tracking-normal">dikontrol via MQTT heartbeat</span>
-                </div>
               </div>
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setEditingGateway(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
