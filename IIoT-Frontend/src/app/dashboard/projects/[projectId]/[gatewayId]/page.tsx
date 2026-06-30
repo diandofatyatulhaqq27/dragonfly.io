@@ -38,6 +38,7 @@ export default function GatewayDetailPage() {
   const [editConfig,      setEditConfig]      = useState<WidgetItem[]>([]);
   const [selectedIdx,     setSelectedIdx]     = useState<number | null>(null);
   const [layouts,         setLayouts]         = useState<RGLLayout[]>([]);
+  const [chartDataMap,    setChartDataMap]    = useState<Record<string, any[]>>({});
   const [containerWidth,  setContainerWidth]  = useState(1200);
 
   // ── Floating settings panel drag state ───────────────────────────────────
@@ -80,6 +81,42 @@ export default function GatewayDetailPage() {
     return () => obs.disconnect();
   }, []);
 
+  // ── Fetch chart data terpusat (pre-aggregated dari backend) ──────────────
+  const fetchChartDataForWidgets = useCallback(async (configList: WidgetItem[]) => {
+    if (!gatewayId || !configList.length) return;
+
+    const chartWidgets = configList.filter((item) => item.type === "chart" || item.type === "bar");
+    if (!chartWidgets.length) return;
+
+    const newMap: Record<string, any[]> = {};
+
+    await Promise.all(
+      chartWidgets.map(async (item, idx) => {
+        const isMulti   = item.type === "chart" && (item.keys?.length ?? 0) > 1;
+        const keysParam = isMulti ? item.keys!.join(",") : item.key;
+        const range     = item.range ?? "1h";
+        if (!keysParam) return;
+
+        const mapKey = `${item.type}-${idx}-${item.key}`;
+
+        try {
+          const res = await fetch(
+            `${API_BASE}/gateways/${gatewayId}/chart?range=${range}&keys=${keysParam}`,
+            { method: "GET", cache: "no-store", headers: getAuthHeaders() }
+          );
+          if (res.ok) {
+            const r = await res.json();
+            newMap[mapKey] = r.data ?? [];
+          }
+        } catch (err) {
+          console.error(`Chart fetch error (idx ${idx}):`, err);
+        }
+      })
+    );
+
+    setChartDataMap((prev) => ({ ...prev, ...newMap }));
+  }, [gatewayId]);
+
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchAllData = useCallback(async () => {
     if (!projectId || !gatewayId) return;
@@ -96,10 +133,13 @@ export default function GatewayDetailPage() {
         if (data) {
           setGatewayInfo(data);
           setLogs(data.logs ?? []);
+          const cfg: WidgetItem[] = data.config ?? [];
           if (!isEditMode) {
-            const cfg: WidgetItem[] = data.config ?? [];
             setEditConfig(cfg);
             setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
+            fetchChartDataForWidgets(cfg);
+          } else {
+            fetchChartDataForWidgets(editConfig);
           }
         }
       }
@@ -117,7 +157,7 @@ export default function GatewayDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, gatewayId, isEditMode]);
+  }, [projectId, gatewayId, isEditMode, editConfig, fetchChartDataForWidgets]);
 
   useEffect(() => {
     fetchAllData();
@@ -171,6 +211,10 @@ export default function GatewayDetailPage() {
     setEditConfig((prev) => {
       const updated = [...prev];
       (updated[i] as any)[field] = val;
+      // Re-fetch chart jika range/key berubah
+      if (field === "range" || field === "key" || field === "keys") {
+        fetchChartDataForWidgets(updated);
+      }
       return updated;
     });
   };
@@ -373,32 +417,40 @@ export default function GatewayDetailPage() {
               containerPadding={[0, 0]}
               resizeHandles={["se"]}
             >
-              {editConfig.map((item, index) => (
-                <div key={String(index)} className="relative">
-                  {isEditMode && (
-                    <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
-                      <div className="flex gap-0.5">
-                        {[...Array(6)].map((_, i) => (
-                          <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />
-                        ))}
+              {editConfig.map((item, index) => {
+                // Hitung index khusus chart widget (konsisten dengan fetchChartDataForWidgets)
+                const chartItems    = editConfig.filter((w) => w.type === "chart" || w.type === "bar");
+                const chartWidgetIdx = chartItems.indexOf(item);
+                const mapKey = (item.type === "chart" || item.type === "bar")
+                  ? `${item.type}-${chartWidgetIdx}-${item.key}`
+                  : "";
+                const serverChartData = mapKey ? (chartDataMap[mapKey] ?? []) : [];
+
+                return (
+                  <div key={String(index)} className="relative">
+                    {isEditMode && (
+                      <div className="drag-handle absolute top-0 left-0 right-0 h-7 z-10 cursor-grab active:cursor-grabbing flex items-center px-3 gap-1.5 bg-slate-900/5 dark:bg-white/5 rounded-t-2xl">
+                        <div className="flex gap-0.5">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="w-0.5 h-3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full" />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  <WidgetCard
-                    item={item}
-                    index={index}
-                    isEditMode={isEditMode}
-                    isSelected={selectedIdx === index}
-                    isOnline={isOnline}
-                    gatewayId={String(gatewayId)}
-                    logs={logs}
-                    latestPayload={latestPayload}
-                    onSelect={setSelectedIdx}
-                    apiBase={API_BASE}
-                    authHeaders={getAuthHeaders()}
-                  />
-                </div>
-              ))}
+                    )}
+                    <WidgetCard
+                      item={item}
+                      index={index}
+                      isEditMode={isEditMode}
+                      isSelected={selectedIdx === index}
+                      isOnline={isOnline}
+                      logs={logs}
+                      latestPayload={latestPayload}
+                      onSelect={setSelectedIdx}
+                      serverChartData={serverChartData}
+                    />
+                  </div>
+                );
+              })}
             </GridLayout>
           )}
         </div>

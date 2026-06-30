@@ -1,12 +1,5 @@
 "use client";
 
-// src/app/dashboard/datalogger/DataLoggerClient.tsx
-//
-// CLIENT COMPONENT — menangani interaktivitas (filter, pagination, export).
-// Menerima data INITIAL dari Server Component induk lewat props, sehingga
-// render pertama tidak perlu fetch apa pun. Fetch baru hanya terjadi saat
-// user benar-benar mengganti filter (project/gateway/tanggal/halaman).
-
 import React, { useState, useCallback } from "react";
 import {
   Calendar, Download, RefreshCcw,

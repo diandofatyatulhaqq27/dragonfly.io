@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo } from "react";
 import {
   ResponsiveContainer, AreaChart, Area,
   BarChart, Bar, XAxis, YAxis,
@@ -8,7 +8,7 @@ import {
 import { Hash, TrendingUp, Gauge, ToggleLeft, BarChart2, Activity, Plus, X, Settings2 } from "lucide-react";
 import {
   WidgetItem, WIDGET_TYPES, RANGE_OPTIONS,
-  getActiveRange, getSparklineData, fetchChartData,
+  getActiveRange, getSparklineData,
   isStatusOn, defaultColor, resolveThresholdColor,
   applyTransform, applyDivisor, ThresholdItem,
 } from "@/lib/widget-config";
@@ -28,60 +28,44 @@ const SWATCH = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#06
 
 export type KeyRow = { key: string; color: string; divisor: number };
 
+// ─── WidgetCard props ──────────────────────────────────────────────────────────
+//
+// Satu mode saja: parent page selalu fetch chart data terlebih dahulu
+// (idealnya di Server Component / sebelum render) dan kirim hasilnya lewat
+// `serverChartData`. WidgetCard murni presentational untuk bagian chart —
+// tidak melakukan fetch apa pun sendiri, sehingga komponen ini tetap ringan
+// dan kompatibel dengan pendekatan SSR.
+
 interface WidgetCardProps {
   item: WidgetItem;
   index: number;
   isEditMode: boolean;
   isSelected: boolean;
   isOnline: boolean;
-  gatewayId: number | string;
   logs: any[];
   latestPayload: Record<string, any>;
   onSelect: (index: number) => void;
-  apiBase: string;
-  authHeaders: Record<string, string>;
+  /** Data chart yang sudah di-fetch & di-aggregate oleh parent (lihat endpoint /chart). */
+  serverChartData: any[];
 }
 
 // ─── Root card ───────────────────────────────────────────────────────────────
 
 export function WidgetCard({
-  item, index, isEditMode, isSelected, isOnline, gatewayId,
-  logs, latestPayload, onSelect, apiBase, authHeaders,
+  item, index, isEditMode, isSelected, isOnline,
+  logs, latestPayload, onSelect, serverChartData,
 }: WidgetCardProps) {
   const isChart     = item.type === "chart" || item.type === "bar";
   const color       = item.color ?? defaultColor(item.type);
   const rawValue    = latestPayload[item.key];
   const activeColor = resolveThresholdColor(rawValue, item.thresholds, color, item.divisor);
 
-  // Sparkline pakai logs lokal (cukup 20 titik terakhir, sudah ada di logs)
   const sparkData = useMemo(
     () => item.type === "trend" ? getSparklineData(item, logs) : [],
     [item, logs]
   );
 
-  // Chart data fetch dari API dengan aggregasi PostgreSQL
-  const [chartData, setChartData] = useState<any[]>([]);
-  const fetchRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    if (!isChart || !gatewayId) return;
-
-    const isMulti = item.type === "chart" && (item.keys?.length ?? 0) > 1;
-    const keys    = isMulti ? (item.keys ?? []) : (item.key ? [item.key] : []);
-    const divs    = isMulti ? (item.keyDivisors ?? keys.map(() => 1)) : [item.divisor ?? 1];
-
-    if (!keys.length) return;
-
-    // Abort request sebelumnya jika range/keys berubah
-    fetchRef.current?.abort();
-    fetchRef.current = new AbortController();
-
-    fetchChartData(gatewayId, item.range ?? "1h", keys, divs, apiBase, authHeaders)
-      .then(setChartData)
-      .catch(() => {});
-
-    return () => fetchRef.current?.abort();
-  }, [isChart, gatewayId, item.range, item.key, item.keys?.join(","), apiBase]);
+  const chartData = serverChartData ?? [];
 
   return (
     <div
@@ -360,7 +344,6 @@ export function WidgetSettingsPanel({ item, index, onUpdate, onRemove, onClose }
   const isValue  = item.type === "value";
   const isStatus = item.type === "status";
 
-  // ── Baris dinamis area chart ──────────────────────────────────────────────
   const initRows = (): KeyRow[] => {
     const keys = item.keys?.length ? item.keys : (item.key ? [item.key] : [""]);
     return keys.map((k, i) => ({
