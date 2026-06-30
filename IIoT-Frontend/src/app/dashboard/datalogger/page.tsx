@@ -7,7 +7,14 @@ import {
 } from "lucide-react";
 import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 
-export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar selaras dengan modul datalogger
+interface Pagination {
+  page: number;
+  page_size: number;
+  total_records: number;
+  total_pages: number;
+}
+
+export default function DataLoggerPage() {
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [gatewaysList, setGatewaysList] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
@@ -19,8 +26,9 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 25;
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1, page_size: 25, total_records: 0, total_pages: 0,
+  });
 
   // ─── 1. FETCH MASTER DATA (Projects + Gateways) ─────────────────────
   const fetchProjects = useCallback(async () => {
@@ -65,54 +73,75 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
     setSelectedGateway("");
   }, [selectedProject]);
 
-  // ─── 2. FETCH HISTORICAL LOGS ────────────────────────────────────────────
-  const fetchHistoricalData = useCallback(async () => {
+  // ─── 2. FETCH HISTORICAL LOGS — server-side pagination + filter tanggal ──
+  // Pakai endpoint /gateways/{id}/logs yang sudah filter & paginate di SQL,
+  // jadi browser cuma download 25 baris per halaman, bukan ribuan sekaligus.
+  // Kalau "SEMUA GATEWAY" dipilih → fetch tiap gateway lalu gabung + sort.
+  const fetchHistoricalData = useCallback(async (page: number = 1) => {
     if (!selectedProject) return;
+
+    const gatewaysToQuery = selectedGateway
+      ? [selectedGateway]
+      : gatewaysInSelectedProject.map((g) => String(g.gateway_id));
+
+    if (gatewaysToQuery.length === 0) {
+      setLogs([]);
+      setPagination({ page: 1, page_size: 25, total_records: 0, total_pages: 0 });
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
 
-      const res = await fetch(`${API_BASE}/projects/${selectedProject}`, {
-        method: "GET", cache: "no-store", headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Gagal memuat arsip log data. Status: ${res.status}`);
-      }
-
-      const result = await res.json();
-      let fetchedLogs: any[] = result.data?.logs ?? [];
+      const params = new URLSearchParams({ page: String(page), page_size: "25" });
+      if (startDate.trim()) params.set("start_date", startDate);
+      if (endDate.trim())   params.set("end_date", endDate);
 
       if (selectedGateway) {
-        fetchedLogs = fetchedLogs.filter(
-          (log: any) => String(log.gateway_id) === String(selectedGateway)
+        // Satu gateway spesifik → 1 request, pagination native dari backend
+        const res = await fetch(`${API_BASE}/gateways/${selectedGateway}/logs?${params}`, {
+          method: "GET", cache: "no-store", headers: getAuthHeaders(),
+        });
+        if (!res.ok) throw new Error(`Gagal memuat data. Status: ${res.status}`);
+        const json = await res.json();
+        setLogs(json.data?.logs ?? []);
+        setPagination(json.data?.pagination ?? { page: 1, page_size: 25, total_records: 0, total_pages: 0 });
+      } else {
+        // Semua gateway dalam project → fetch tiap gateway, gabung, sort.
+        // Catatan: untuk dataset sangat besar lintas banyak gateway,
+        // idealnya backend punya endpoint project-level dengan pagination
+        // native juga. Untuk sekarang ini cukup ringan karena tiap gateway
+        // query sudah ter-filter tanggal + dibatasi page_size besar wajar.
+        const results = await Promise.all(
+          gatewaysToQuery.map((gwId) =>
+            fetch(`${API_BASE}/gateways/${gwId}/logs?${params}`, {
+              method: "GET", cache: "no-store", headers: getAuthHeaders(),
+            }).then((r) => (r.ok ? r.json() : { data: { logs: [] } }))
+          )
         );
+        const combined = results.flatMap((r) => r.data?.logs ?? []);
+        combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setLogs(combined);
+        setPagination({
+          page: 1,
+          page_size: 25,
+          total_records: combined.length,
+          total_pages: Math.ceil(combined.length / 25),
+        });
       }
-
-      if (startDate && startDate.trim() !== "") {
-        const start = new Date(startDate + "T00:00:00").getTime();
-        fetchedLogs = fetchedLogs.filter((log: any) => log.created_at && new Date(log.created_at).getTime() >= start);
-      }
-      if (endDate && endDate.trim() !== "") {
-        const end = new Date(endDate + "T23:59:59").getTime();
-        fetchedLogs = fetchedLogs.filter((log: any) => log.created_at && new Date(log.created_at).getTime() <= end);
-      }
-
-      fetchedLogs.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setLogs(fetchedLogs);
-      setCurrentPage(1);
     } catch (err: any) {
       setError(err.message ?? "Terjadi kesalahan saat memuat data.");
       setLogs([]);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedProject, selectedGateway, startDate, endDate]);
+  }, [selectedProject, selectedGateway, startDate, endDate, gatewaysInSelectedProject]);
 
   useEffect(() => {
-    if (selectedProject) fetchHistoricalData();
+    if (selectedProject) fetchHistoricalData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, selectedGateway]);
+  }, [selectedProject, selectedGateway, startDate, endDate]);
 
   const dynamicChannels = Array.from(
     new Set(logs.flatMap((log) => {
@@ -124,7 +153,7 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
   const gatewayName = (gatewayId: any) =>
     gatewaysList.find((g) => g.gateway_id === gatewayId)?.name ?? `Gateway #${gatewayId ?? "—"}`;
 
-  // ─── 3. EXPORT CSV ───────────────────────────────────────────────────────
+  // ─── 3. EXPORT CSV (hanya export data halaman yang sedang ditampilkan) ──
   const handleExportCSV = () => {
     if (logs.length === 0) return alert("Tidak ada data untuk di-export!");
     const projectName = projectsList.find((p) => String(p.project_id) === String(selectedProject))?.display_name ?? selectedProject;
@@ -132,7 +161,7 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
 
     let csv = "data:text/csv;charset=utf-8,";
     csv += `AUDIT REPORT TELEMETRI DATA LOGGER: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
-    csv += ["No", "Timestamp", "Gateway", ...dynamicChannels].join(",") + "\n"; // Tambah Timestamp di CSV
+    csv += ["No", "Timestamp", "Gateway", ...dynamicChannels].join(",") + "\n";
 
     logs.forEach((log, i) => {
       const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
@@ -156,10 +185,9 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
     document.body.removeChild(link);
   };
 
-  const indexOfLastRecord = currentPage * recordsPerPage;
-  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
-  const currentLogsChunk = logs.slice(indexOfFirstRecord, indexOfLastRecord);
-  const totalPages = Math.ceil(logs.length / recordsPerPage);
+  const handlePageChange = (newPage: number) => {
+    fetchHistoricalData(newPage);
+  };
 
   return (
     <div className="p-6 bg-transparent min-h-screen font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 space-y-5">
@@ -236,7 +264,7 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
           </button>
 
           <button
-            onClick={fetchHistoricalData}
+            onClick={() => fetchHistoricalData(pagination.page)}
             disabled={!selectedProject}
             className="p-2.5 bg-slate-50 dark:bg-slate-900/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border-none cursor-pointer disabled:opacity-40"
           >
@@ -250,7 +278,7 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
             <SlidersHorizontal className="w-3 h-3 text-blue-600 dark:text-blue-400" /> Data Logger Channel Transmissions
           </span>
           <span className="text-[9px] font-mono font-black uppercase text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-900/50">
-            Total Records: {logs.length} Rows
+            Total Records: {pagination.total_records} Rows
           </span>
         </div>
 
@@ -260,7 +288,7 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
             <thead>
               <tr className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-700">
                 <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-14 text-center">Index</th>
-                <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-36"><div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Timestamp</div></th> {/* Tambah Kolom Waktu */}
+                <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-36"><div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Timestamp</div></th>
                 <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-40">Gateway</th>
                 {dynamicChannels.map((ch) => (
                   <th key={ch} className="p-4 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60 bg-blue-50/20 dark:bg-blue-950/10">
@@ -284,16 +312,15 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
                     <p className="text-rose-500 dark:text-rose-400 font-bold text-[11px] uppercase italic">{error}</p>
                   </td>
                 </tr>
-              ) : currentLogsChunk.length > 0 ? (
-                currentLogsChunk.map((log, index) => (
+              ) : logs.length > 0 ? (
+                logs.map((log, index) => (
                   <tr key={log.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
-                    <td className="p-4 text-center text-slate-400 dark:text-slate-600 font-bold">{indexOfFirstRecord + index + 1}</td>
-                    
-                    {/* Mengisi Kolom Timestamp secara Rapi */}
+                    <td className="p-4 text-center text-slate-400 dark:text-slate-600 font-bold">
+                      {(pagination.page - 1) * pagination.page_size + index + 1}
+                    </td>
                     <td className="p-4 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">
                       {log.created_at ? new Date(log.created_at).toLocaleString("id-ID") : "—"}
                     </td>
-
                     <td className="p-4 font-sans text-slate-800 dark:text-slate-300 font-black uppercase tracking-tight text-[10px]">
                       {gatewayName(log.gateway_id)}
                     </td>
@@ -320,17 +347,25 @@ export default function DataLoggerPage() { // 1. Diubah nama fungsinya agar sela
           </table>
         </div>
 
-        {/* ── PAGINATION ── */}
-        {totalPages > 1 && (
+        {/* ── PAGINATION (server-side) ── */}
+        {pagination.total_pages > 1 && (
           <div className="p-4 border-t border-slate-50 dark:border-slate-700 flex items-center justify-between font-sans">
             <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Showing {indexOfFirstRecord + 1} – {Math.min(indexOfLastRecord, logs.length)} of {logs.length} records
+              Page {pagination.page} of {pagination.total_pages} — {pagination.total_records} total records
             </p>
             <div className="flex gap-1.5">
-              <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage === 1} className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-pointer disabled:opacity-40">
+              <button
+                onClick={() => handlePageChange(Math.max(pagination.page - 1, 1))}
+                disabled={pagination.page === 1}
+                className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-pointer disabled:opacity-40"
+              >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-pointer disabled:opacity-40">
+              <button
+                onClick={() => handlePageChange(Math.min(pagination.page + 1, pagination.total_pages))}
+                disabled={pagination.page === pagination.total_pages}
+                className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 cursor-pointer disabled:opacity-40"
+              >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
