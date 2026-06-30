@@ -213,6 +213,17 @@ function formatBucketTime(ts: number, rangeMs: number): string {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
+// widget-config.ts
+export function formatTickTime(isoString: string): string {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  return d.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta",
+  });
+}
+
 export function getChartData(item: WidgetItem, logs: any[]) {
   const rangeOpt = getActiveRange(item.range);
   const cutoff   = Date.now() - rangeOpt.ms;

@@ -11,6 +11,7 @@ import {
   getActiveRange, getSparklineData,
   isStatusOn, defaultColor, resolveThresholdColor,
   applyTransform, applyDivisor, ThresholdItem,
+  formatTickTime,
 } from "@/lib/widget-config";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
