@@ -12,6 +12,8 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/gateways", tags=["Gateways"])
 
+WIB = pytz.timezone("Asia/Jakarta")
+
 class GatewaySchema(BaseModel):
     gateway_id: Optional[int] = None
     hmi_code: Optional[str] = None
@@ -204,19 +206,13 @@ def get_gateway_logs(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    Endpoint khusus Data Logger — server-side pagination + filter tanggal.
-    Jauh lebih ringan daripada menarik SEMUA log project lalu filter di client.
-
-    Contoh: GET /api/gateways/5/logs?start_date=2026-06-01&end_date=2026-06-30&page=2&page_size=25
-    """
+    
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
 
     query = db.query(TelemetryLog).filter(TelemetryLog.gateway_id == gateway_id)
 
-    WIB = pytz.timezone("Asia/Jakarta")
     if start_date:
         start_dt = WIB.localize(datetime.strptime(f"{start_date} 00:00:00", "%Y-%m-%d %H:%M:%S"))
         query = query.filter(TelemetryLog.created_at >= start_dt)
@@ -228,13 +224,12 @@ def get_gateway_logs(
     
     if start_date:
         order_clause = TelemetryLog.created_at.asc()
-    if end_date:
+    else:
         order_clause = TelemetryLog.created_at.desc()
         
-
     logs = (
         query
-        .order_by(TelemetryLog.created_at.desc())
+        .order_by(order_clause)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
