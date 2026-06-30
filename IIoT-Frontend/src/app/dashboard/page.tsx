@@ -38,7 +38,7 @@ function greeting() {
   if (h < 22) {
     return "Good evening";    // Jam 17.00 - 21.59 (Sore menjelang malam)
   }
-  
+
   return "Good night";        // Jam 22.00 - 23.59 (Waktu tidur)
 }
 
@@ -98,25 +98,24 @@ export default function DashboardPage() {
     .slice(0, 4);
 
   return (
-    <div className="relative flex flex-col items-start h-full min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
+    <div className="relative flex flex-col items-center h-full min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       {/* MAP Background */}
       <div className="absolute inset-0 w-full h-full z-0">
         <AssetMap isFullScreen={true} />
       </div>
 
-      {/* LEFT PANEL */}
+      {/* TOP CENTER PANEL */}
       <div className="relative z-10 w-full max-w-[340px] flex flex-col gap-3">
 
-        {/* Header card */}
-        <div className="rounded-2xl border border-white/60 dark:border-gray-700/60 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-lg px-5 py-4">
+        {/* Header text (see-through, no box) */}
+        <div className="px-1">
           <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
             {greeting()} 👋
           </h1>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             Here's your network status right now.
           </p>
         </div>
-
 
         {/* ── Offline gateway list ── */}
         {!isLoading && recentOffline.length > 0 && (
