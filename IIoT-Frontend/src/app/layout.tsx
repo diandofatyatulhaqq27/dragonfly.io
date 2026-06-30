@@ -20,7 +20,13 @@ import myLogo from '@/assets/logodragonfly2.png';
 import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 
 // ── NOTIFICATION DROPDOWN ────────────────────────────────────────────────────
-function NotificationDropdown({ onClose }: { onClose: () => void }) {
+function NotificationDropdown({
+  onClose,
+  triggerRef,
+}: {
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
   const [alarms, setAlarms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,11 +48,15 @@ function NotificationDropdown({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (ref.current && !ref.current.contains(target) &&
+          !(triggerRef.current && triggerRef.current.contains(target))) {
+        onClose();
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   return (
     <div ref={ref} className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
@@ -105,10 +115,16 @@ function NotificationDropdown({ onClose }: { onClose: () => void }) {
 }
 
 // ── USER DROPDOWN ────────────────────────────────────────────────────────────
-function UserDropdown({ user, onClose, onSignOut }: {
+function UserDropdown({
+  user,
+  onClose,
+  onSignOut,
+  triggerRef,
+}: {
   user: { name: string; role: string; company_id: number } | null;
   onClose: () => void;
   onSignOut: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -124,11 +140,15 @@ function UserDropdown({ user, onClose, onSignOut }: {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (ref.current && !ref.current.contains(target) &&
+          !(triggerRef.current && triggerRef.current.contains(target))) {
+        onClose();
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   return (
     <div ref={ref} className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
@@ -166,6 +186,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [activeAlarmCount, setActiveAlarmCount] = useState(0);
+
+  const bellButtonRef = useRef<HTMLButtonElement>(null);
+  const userButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -379,11 +402,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-1.5">
-              
+              {/* Fitur Search Bar Selesai Dihapus Sepenuhnya Agar Header Terlihat Bersih dan Ringkas */}
+
               <div className="relative">
                 <button
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => { setShowNotifications(!showNotifications); setShowUserMenu(false); }}
+                  ref={bellButtonRef}
+                  onClick={() => { setShowNotifications((prev) => !prev); setShowUserMenu(false); }}
                   className="relative p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border-none bg-transparent cursor-pointer"
                 >
                   <Bell className="w-5 h-5" />
@@ -392,7 +416,10 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                   )}
                 </button>
                 {showNotifications && (
-                  <NotificationDropdown onClose={() => setShowNotifications(false)} />
+                  <NotificationDropdown
+                    onClose={() => setShowNotifications(false)}
+                    triggerRef={bellButtonRef}
+                  />
                 )}
               </div>
 
@@ -400,8 +427,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
               <div className="relative">
                 <button
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifications(false); }}
+                  ref={userButtonRef}
+                  onClick={() => { setShowUserMenu((prev) => !prev); setShowNotifications(false); }}
                   className="flex items-center gap-2 pl-2 border-l border-gray-100 dark:border-gray-800 cursor-pointer hover:opacity-80 transition-opacity border-none bg-transparent"
                 >
                   <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -417,6 +444,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                     user={user}
                     onClose={() => setShowUserMenu(false)}
                     onSignOut={handleSignOut}
+                    triggerRef={userButtonRef}
                   />
                 )}
               </div>
