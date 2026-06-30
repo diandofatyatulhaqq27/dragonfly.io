@@ -353,9 +353,9 @@ export default function DataLoggerPage() {
                   ))
                 ) : (
                   <>
-                    <th className="p-4 text-[9px] font-black text-rose-500 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60 bg-rose-50/10">Alarm Name</th>
+                    <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-1 border-slate-100 dark:border-slate-700/60">Alarm Name</th>
                     <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60 w-64">Alert Message</th>
-                    <th className="p-4 text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60">Verified At</th>
+                    <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60">Verified At</th>
                     <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-l border-slate-100 dark:border-slate-700/60">Operator</th>
                   </>
                 )}
