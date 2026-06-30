@@ -383,7 +383,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               
               <div className="relative">
                 <button
-                  onClick={() => { setShowNotifications(!showNotifications); setShowUserMenu(false); }}
+                  onClick={(e) => { e.stopPropagation(); setShowNotifications(!showNotifications); setShowUserMenu(false); }}
                   className="relative p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors border-none bg-transparent cursor-pointer"
                 >
                   <Bell className="w-5 h-5" />
