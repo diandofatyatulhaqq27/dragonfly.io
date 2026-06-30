@@ -142,7 +142,7 @@ export default function DashboardPage() {
                     : "text-[11px] text-gray-400 mt-0.5"
                 }
               >
-                {totalGateways} gateways terdaftar
+                {totalGateways} gateways online
               </p>
             </div>
           </div>
