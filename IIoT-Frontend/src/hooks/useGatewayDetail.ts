@@ -17,31 +17,18 @@ export class GatewayNotFoundError extends Error {
   }
 }
 
-/** True if the value is a valid positive integer gateway id (e.g. "12", not "no-gateway"). */
-export function isValidGatewayId(gatewayId: unknown): boolean {
-  return typeof gatewayId !== "undefined" && gatewayId !== null && /^\d+$/.test(String(gatewayId));
-}
-
 export function useGatewayDetail(
   gatewayId?: string | number,
   options?: { refetchInterval?: number }
 ) {
-  const validId = isValidGatewayId(gatewayId);
   return useQuery({
     queryKey: ["gateway", String(gatewayId)],
     queryFn: async () => {
-      // Guard against non-numeric ids (e.g. a stale "no-gateway" placeholder
-      // link) before ever hitting the network — the backend would 422 on
-      // these anyway, but there's no point spending a round-trip on it.
-      if (!validId) throw new GatewayNotFoundError();
-
       const res = await fetch(`${API_BASE}/gateways/${gatewayId}`, {
         cache: "no-store",
         headers: getAuthHeaders(),
       });
-      // Treat 404 (gateway deleted) and 422 (malformed/non-numeric id that
-      // slipped past the guard above) the same way: gateway not found.
-      if (res.status === 404 || res.status === 422) throw new GatewayNotFoundError();
+      if (res.status === 404) throw new GatewayNotFoundError();
       if (!res.ok) throw new Error("Gagal mengambil data gateway.");
       const r = await res.json();
       return r.data as any;
@@ -50,8 +37,8 @@ export function useGatewayDetail(
     // Live-ish data, but no need to hammer the server between polls.
     staleTime: 4_000,
     refetchInterval: options?.refetchInterval,
-    // Don't retry a genuine not-found — retrying won't make a deleted or
-    // invalid gateway id resolve, it'll just delay showing the 404 state.
+    // Don't retry a genuine 404 — retrying won't make a deleted gateway
+    // reappear, it'll just delay showing the not-found state.
     retry: (failureCount, error) =>
       error instanceof GatewayNotFoundError ? false : failureCount < 3,
   });

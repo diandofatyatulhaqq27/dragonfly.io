@@ -13,20 +13,24 @@ export default function ProjectRedirectPage() {
   useEffect(() => {
     if (!projectId) return;
 
+    // ── Layer 1: request itself failed (network/API error, invalid project id, etc.) ──
     if (isError) {
       console.error("Redirect error: gagal memuat project.");
-      router.replace("/dashboard/projects");
+      router.replace(`/dashboard/error404?reason=load-failed`);
       return;
     }
 
-    if (isSuccess) {
-      if (gatewayList.length > 0) {
-        const firstId = gatewayList[0].gateway_id ?? gatewayList[0].id;
-        router.replace(`/dashboard/projects/${projectId}/${firstId}`);
-      } else {
-        router.replace(`/dashboard/projects/${projectId}/no-gateway`);
-      }
+    if (!isSuccess) return;
+
+    // ── Layer 2: request succeeded, but this project has no gateway bound ──
+    if (gatewayList.length === 0) {
+      router.replace(`/dashboard/error404?reason=no-gateway&projectId=${projectId}`);
+      return;
     }
+
+    // Both layers passed — land on the first gateway.
+    const firstId = gatewayList[0].gateway_id ?? gatewayList[0].id;
+    router.replace(`/dashboard/projects/${projectId}/${firstId}`);
   }, [projectId, isSuccess, isError, gatewayList, router]);
 
   return (
