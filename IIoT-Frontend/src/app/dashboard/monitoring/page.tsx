@@ -1,17 +1,25 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React from "react";
 import {
   AlertTriangle, Wifi, WifiOff, Loader2,
-  Building2, Cpu, BellRing, ShieldAlert,
+  Building2, Cpu, BellRing,
 } from "lucide-react";
-import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
+import { getLocalUser } from "@/lib/api";
 import {
   AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, Tooltip,
   ResponsiveContainer,
 } from "recharts";
 
-function timeAgo(dateStr?: string | null): string {
+import { useGateways } from "@/hooks/useGateways";
+import { useProjects } from "@/hooks/useProjects";
+import { useCompanies } from "@/hooks/useCompanies";
+import { useAllAlarms } from "@/hooks/useAlarms";
+import { useAlarmHistory } from "@/hooks/useAlarmHistory";
+
+const POLL_INTERVAL = 5000;
+
+function timeAgo(dateStr?: string | Date | null): string {
   if (!dateStr) return "Never";
   const diffSec = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diffSec < 5) return "Just now";
@@ -24,16 +32,12 @@ function timeAgo(dateStr?: string | null): string {
 type Period = "hourly" | "daily" | "monthly";
 
 function buildChartData(alarms: any[], period: Period) {
-  const now = Date.now();
-
   if (period === "hourly") {
     const currentHour = new Date();
     currentHour.setMinutes(0, 0, 0);
 
     return Array.from({ length: 24 }, (_, i) => {
-      const slotStart =
-        currentHour.getTime() - (23 - i) * 3_600_000;
-
+      const slotStart = currentHour.getTime() - (23 - i) * 3_600_000;
       const slotEnd = slotStart + 3_600_000;
 
       const count = alarms.filter((a) => {
@@ -42,7 +46,6 @@ function buildChartData(alarms: any[], period: Period) {
       }).length;
 
       const d = new Date(slotStart);
-
       return {
         label: `${d.getHours().toString().padStart(2, "0")}:00`,
         alarms: count,
@@ -51,20 +54,12 @@ function buildChartData(alarms: any[], period: Period) {
   }
 
   if (period === "daily") {
-    // Rolling 7-day window (last 7 days including today), aligned to local
-    // midnight so "today" always lands correctly regardless of current
-    // time-of-day. Labels use day names (Sen, Sel, Rab, ...) since this is
-    // the "daily" view — showing which day of the week each bucket is,
-    // rather than a bare date number.
     const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
     return Array.from({ length: 7 }, (_, i) => {
-      const slotStart =
-        startOfToday.getTime() - (6 - i) * 86_400_000;
-
+      const slotStart = startOfToday.getTime() - (6 - i) * 86_400_000;
       const slotEnd = slotStart + 86_400_000;
 
       const count = alarms.filter((a) => {
@@ -73,11 +68,7 @@ function buildChartData(alarms: any[], period: Period) {
       }).length;
 
       const d = new Date(slotStart);
-
-      return {
-        label: DAY_NAMES[d.getDay()],
-        alarms: count,
-      };
+      return { label: DAY_NAMES[d.getDay()], alarms: count };
     });
   }
 
@@ -88,12 +79,10 @@ function buildChartData(alarms: any[], period: Period) {
 
   return Array.from({ length: 12 }, (_, i) => {
     const d = new Date();
-
     d.setMonth(d.getMonth() - (11 - i));
 
     const y = d.getFullYear();
     const m = d.getMonth();
-
     const slotStart = new Date(y, m, 1).getTime();
     const slotEnd = new Date(y, m + 1, 1).getTime();
 
@@ -102,10 +91,7 @@ function buildChartData(alarms: any[], period: Period) {
       return t >= slotStart && t < slotEnd;
     }).length;
 
-    return {
-      label: MONTHS[m],
-      alarms: count,
-    };
+    return { label: MONTHS[m], alarms: count };
   });
 }
 
@@ -156,82 +142,72 @@ function StatCard({ title, value, subtitle, icon, iconBg, valueColor, loading, p
 }
 
 export default function MonitoringPage() {
-  const [gateways, setGateways]         = useState<any[]>([]);
-  const [projects, setProjects]         = useState<any[]>([]);
-  const [companies, setCompanies]       = useState<any[]>([]);
-  const [alarms, setAlarms]             = useState<any[]>([]);
-  const [alarmHistory, setAlarmHistory] = useState<any[]>([]); // ✅ tambah state history
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState<string | null>(null);
-  const [lastSync, setLastSync]         = useState<Date | null>(null);
-  const [chartPeriod, setChartPeriod]   = useState<Period>("daily");
+  const [chartPeriod, setChartPeriod] = React.useState<Period>("daily");
 
-  const loggedInUser    = getLocalUser();
-  const userRole        = loggedInUser?.role ?? "client_user";
-  const userCompanyId   = String(loggedInUser?.company_id ?? "");
+  const loggedInUser  = getLocalUser();
+  const userRole      = loggedInUser?.role ?? "client_user";
+  const userCompanyId = String(loggedInUser?.company_id ?? "");
   const isCompanyScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole);
 
-  // ✅ fetchOverview: tambah fetch alarms/history
-  const fetchOverview = useCallback(async () => {
-    try {
-      setError(null);
-      const headers = getAuthHeaders();
+  // NOTE: useProjects() scopes internally based on role === "admin" only,
+  // which is narrower than isCompanyScoped here (which also treats
+  // rasindo_operator/rasindo_user as unscoped). That mismatch already
+  // existed in the hook as provided — for rasindo_operator/rasindo_user
+  // this page will fetch unscoped gateways but company-scoped projects.
+  // Flagging it here; align useProjects()'s scoping check if that's
+  // not intended.
+  const gatewaysQuery = useGateways(
+    isCompanyScoped ? userCompanyId : undefined,
+    { refetchInterval: POLL_INTERVAL }
+  );
+  const projectsQuery = useProjects({ refetchInterval: POLL_INTERVAL });
+  const companiesQuery = useCompanies({ refetchInterval: POLL_INTERVAL });
+  const alarmsQuery = useAllAlarms({ refetchInterval: POLL_INTERVAL });
+  const alarmHistoryQuery = useAlarmHistory({ refetchInterval: POLL_INTERVAL });
 
-      const gwUrl   = isCompanyScoped && userCompanyId
-        ? `${API_BASE}/gateways/?company_id=${userCompanyId}`
-        : `${API_BASE}/gateways/`;
-      const projUrl = isCompanyScoped && userCompanyId
-        ? `${API_BASE}/projects/?company_id=${userCompanyId}`
-        : `${API_BASE}/projects/`;
+  const gateways = gatewaysQuery.data ?? [];
+  const projects = projectsQuery.data ?? [];
+  const companies = companiesQuery.data ?? [];
+  const alarms = alarmsQuery.data ?? [];
+  const alarmHistory = alarmHistoryQuery.data ?? [];
 
-      const [resGw, resProj, resComp, resAlarm, resHistory] = await Promise.allSettled([
-        fetch(gwUrl,                          { headers, cache: "no-store" }),
-        fetch(projUrl,                        { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/companies/`,       { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/alarms/`,          { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/alarms/history`,   { headers, cache: "no-store" }), // ✅ baru
-      ]);
+  // Only show the full-page skeleton on the very first load of each
+  // query, not on background refetches (mirrors old `loading` behavior,
+  // which was only ever set to false once after first fetch).
+  const loading =
+    gatewaysQuery.isLoading ||
+    projectsQuery.isLoading ||
+    companiesQuery.isLoading ||
+    alarmsQuery.isLoading ||
+    alarmHistoryQuery.isLoading;
 
-      if (resGw.status    === "fulfilled" && resGw.value.ok)
-        setGateways((await resGw.value.json()).data ?? []);
-      else setGateways([]);
+  const isFetching =
+    gatewaysQuery.isFetching ||
+    projectsQuery.isFetching ||
+    companiesQuery.isFetching ||
+    alarmsQuery.isFetching ||
+    alarmHistoryQuery.isFetching;
 
-      if (resProj.status  === "fulfilled" && resProj.value.ok)
-        setProjects((await resProj.value.json()).data ?? []);
+  const error =
+    gatewaysQuery.error?.message ??
+    projectsQuery.error?.message ??
+    companiesQuery.error?.message ??
+    alarmsQuery.error?.message ??
+    alarmHistoryQuery.error?.message ??
+    null;
 
-      if (resComp.status  === "fulfilled" && resComp.value.ok)
-        setCompanies((await resComp.value.json()).data ?? []);
-
-      if (resAlarm.status === "fulfilled" && resAlarm.value.ok)
-        setAlarms((await resAlarm.value.json()).data ?? []);
-      else setAlarms([]);
-
-      // ✅ set alarm history untuk chart
-      if (resHistory.status === "fulfilled" && resHistory.value.ok)
-        setAlarmHistory((await resHistory.value.json()).data ?? []);
-      else setAlarmHistory([]);
-
-      setLastSync(new Date());
-    } catch (err: any) {
-      setError(err.message ?? "Failed to load monitoring data.");
-    } finally {
-      setLoading(false);
-    }
-  }, [isCompanyScoped, userCompanyId]);
-
-  useEffect(() => {
-    fetchOverview();
-    const interval = setInterval(() => {
-      if (!document.hidden) fetchOverview();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [fetchOverview]);
+  const lastSync = Math.max(
+    gatewaysQuery.dataUpdatedAt,
+    projectsQuery.dataUpdatedAt,
+    companiesQuery.dataUpdatedAt,
+    alarmsQuery.dataUpdatedAt,
+    alarmHistoryQuery.dataUpdatedAt
+  );
 
   const totalGateways   = gateways.length;
   const onlineGateways  = gateways.filter((g) => g.status === "online").length;
   const offlineGateways = totalGateways - onlineGateways;
   const activeAlarms    = alarms.filter((a) => a.status === "ACTIVE");
-  const criticalAlarms  = activeAlarms.filter((a) => a.severity === "CRITICAL");
   const uptimePct       = totalGateways > 0 ? Math.round((onlineGateways / totalGateways) * 100) : 0;
 
   const projectName = (id: any) =>
@@ -239,7 +215,6 @@ export default function MonitoringPage() {
   const companyName = (id: any) =>
     companies.find((c) => c.id === id)?.name ?? `Tenant #${id ?? "—"}`;
 
-  // ✅ chart pakai alarmHistory bukan alarms
   const chartData = buildChartData(alarmHistory, chartPeriod);
 
   const periodLabel = {
@@ -252,9 +227,9 @@ export default function MonitoringPage() {
     <div className="p-6 space-y-6 min-h-screen bg-gray-50 dark:bg-gray-950">
 
       <div className="flex items-center justify-end gap-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-blue-400 animate-pulse" : "bg-emerald-500"}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${isFetching ? "bg-blue-400 animate-pulse" : "bg-emerald-500"}`} />
         <span className="text-[11px] text-gray-400 dark:text-gray-500">
-          {lastSync ? `Updated ${timeAgo(lastSync.toISOString())}` : "Connecting…"}
+          {lastSync ? `Updated ${timeAgo(lastSync)}` : "Connecting…"}
         </span>
       </div>
 
@@ -337,7 +312,7 @@ export default function MonitoringPage() {
                   tick={{ fontSize: 10, fill: "#9ca3af" }}
                   axisLine={false}
                   tickLine={false}
-                  interval={ 0 }
+                  interval={0}
                 />
                 <YAxis
                   allowDecimals={false}
@@ -360,6 +335,7 @@ export default function MonitoringPage() {
           )}
         </div>
       </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
