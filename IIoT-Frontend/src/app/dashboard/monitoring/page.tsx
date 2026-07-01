@@ -51,17 +51,19 @@ function buildChartData(alarms: any[], period: Period) {
   }
 
   if (period === "daily") {
-    // Align the rolling 30-day window to the start of today (local midnight)
-    // instead of the current timestamp, so the last bucket always represents
-    // "today" with the correct calendar date label — fixes off-by-one bug
-    // where today's date appeared shifted back by 1 day depending on the
-    // current time-of-day.
+    // Rolling 7-day window (last 7 days including today), aligned to local
+    // midnight so "today" always lands correctly regardless of current
+    // time-of-day. Labels use day names (Sen, Sel, Rab, ...) since this is
+    // the "daily" view — showing which day of the week each bucket is,
+    // rather than a bare date number.
+    const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    return Array.from({ length: 30 }, (_, i) => {
+    return Array.from({ length: 7 }, (_, i) => {
       const slotStart =
-        startOfToday.getTime() - (29 - i) * 86_400_000;
+        startOfToday.getTime() - (6 - i) * 86_400_000;
 
       const slotEnd = slotStart + 86_400_000;
 
@@ -73,7 +75,7 @@ function buildChartData(alarms: any[], period: Period) {
       const d = new Date(slotStart);
 
       return {
-        label: `${d.getDate()}`,
+        label: DAY_NAMES[d.getDay()],
         alarms: count,
       };
     });
@@ -242,7 +244,7 @@ export default function MonitoringPage() {
 
   const periodLabel = {
     hourly: "Past 24 hours",
-    daily: "Past 30 days",
+    daily: "Past 7 days",
     monthly: "Past 12 months",
   };
 
@@ -439,7 +441,7 @@ export default function MonitoringPage() {
                   <div key={proj.project_id} className="px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium uppercase text-gray-800 dark:text-gray-200 truncate">{proj.display_name}</p>
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{proj.display_name}</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{companyName(proj.company_id)}</p>
                       </div>
                       {projAlarms.length > 0 ? (
