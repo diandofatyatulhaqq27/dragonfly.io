@@ -162,14 +162,36 @@ export default function MonitoringPage() {
   );
   const projectsQuery = useProjects({ refetchInterval: POLL_INTERVAL });
   const companiesQuery = useCompanies({ refetchInterval: POLL_INTERVAL });
+  // NOTE: useAllAlarms/useAlarmHistory don't accept a company/scope filter,
+  // so they always return data for every company. We scope them client-side
+  // below against `gateways`, which is already correctly company-scoped.
+  // If/when the backend supports a company filter for these two endpoints,
+  // prefer passing it here instead so unscoped data never reaches the client.
   const alarmsQuery = useAllAlarms({ refetchInterval: POLL_INTERVAL });
   const alarmHistoryQuery = useAlarmHistory({ refetchInterval: POLL_INTERVAL });
 
   const gateways = gatewaysQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
   const companies = companiesQuery.data ?? [];
-  const alarms = alarmsQuery.data ?? [];
-  const alarmHistory = alarmHistoryQuery.data ?? [];
+
+  // Scope alarms & alarm history to gateways the current user can actually
+  // see. `gateways` above is already filtered by company (via useGateways),
+  // so we reuse that as the source of truth instead of trusting the raw
+  // alarm endpoints, which return data across all companies.
+  const gatewayIdSet = React.useMemo(
+    () => new Set(gateways.map((g) => g.gateway_id)),
+    [gateways]
+  );
+
+  const alarms = React.useMemo(
+    () => (alarmsQuery.data ?? []).filter((a) => gatewayIdSet.has(a.gateway_id)),
+    [alarmsQuery.data, gatewayIdSet]
+  );
+
+  const alarmHistory = React.useMemo(
+    () => (alarmHistoryQuery.data ?? []).filter((a) => gatewayIdSet.has(a.gateway_id)),
+    [alarmHistoryQuery.data, gatewayIdSet]
+  );
 
   // Only show the full-page skeleton on the very first load of each
   // query, not on background refetches (mirrors old `loading` behavior,
@@ -215,7 +237,14 @@ export default function MonitoringPage() {
   const companyName = (id: any) =>
     companies.find((c) => c.id === id)?.name ?? `Tenant #${id ?? "—"}`;
 
-  const chartData = buildChartData(alarmHistory, chartPeriod);
+  // Memoized so the reference stays stable while the underlying data and
+  // selected period haven't changed. Without this, every 5s poll produced a
+  // brand-new array even when alarm counts were identical, which made the
+  // recharts <Area> replay its enter animation on every tick.
+  const chartData = React.useMemo(
+    () => buildChartData(alarmHistory, chartPeriod),
+    [alarmHistory, chartPeriod]
+  );
 
   const periodLabel = {
     hourly: "Past 24 hours",
@@ -299,7 +328,11 @@ export default function MonitoringPage() {
               <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 520, height: 220 }}
+            >
               <AreaChart data={chartData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -329,6 +362,7 @@ export default function MonitoringPage() {
                   fill="url(#areaGrad)"
                   dot={false}
                   activeDot={{ r: 4, fill: "#6366f1" }}
+                  isAnimationActive={false}
                 />
               </AreaChart>
             </ResponsiveContainer>
