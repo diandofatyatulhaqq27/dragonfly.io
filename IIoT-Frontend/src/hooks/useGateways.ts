@@ -11,7 +11,7 @@ import { API_BASE, getAuthHeaders } from "@/lib/api";
  * Pass `undefined` (or omit) for companyId to fetch all gateways
  * (used by admin / rasindo_operator / rasindo_user roles).
  */
-export function useGateways(companyId?: string) {
+export function useGateways(companyId?: string, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: ["gateways", companyId ?? "all"],
     queryFn: async () => {
@@ -29,5 +29,8 @@ export function useGateways(companyId?: string) {
     // navigating between pages that both use gateways doesn't refetch
     // unnecessarily, while still staying reasonably up to date.
     staleTime: 30_000,
+    // Optional live polling (e.g. dashboard wants updates every 10s).
+    // Omit this option on pages that don't need it.
+    refetchInterval: options?.refetchInterval,
   });
 }

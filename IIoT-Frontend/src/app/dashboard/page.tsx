@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
 import {
   AlertTriangle,
   Wifi,
@@ -10,7 +10,9 @@ import {
   Radio,
 } from "lucide-react";
 import { AssetMap } from "@/components/maps/AssetMap";
-import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
+import { getLocalUser } from "@/lib/api";
+import { useGateways } from "@/hooks/useGateways";
+import { useAllAlarms } from "@/hooks/useAlarms";
 import Link from "next/link";
 
 function timeAgo(dateStr?: string | null): string {
@@ -43,56 +45,40 @@ function greeting() {
 }
 
 export default function DashboardPage() {
-  const [gateways, setGateways] = useState<any[]>([]);
-  const [alarms, setAlarms] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
   const loggedInUser = getLocalUser();
   const userRole = loggedInUser?.role ?? "client_user";
   const userCompanyId = String(loggedInUser?.company_id ?? "");
   const isCompanyScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const headers = getAuthHeaders();
+  // ── React Query hooks replace the old useState/useEffect + setInterval ──
+  // Gateways are scoped server-side (query param) when the user is
+  // company-scoped, same convention as the alarms/monitoring pages.
+  const gatewaysQuery = useGateways(isCompanyScoped ? userCompanyId : undefined, { refetchInterval: 10_000 });
+  const gateways = gatewaysQuery.data ?? [];
 
-      const gwUrl =
-        isCompanyScoped && userCompanyId
-          ? `${API_BASE}/gateways/?company_id=${userCompanyId}`
-          : `${API_BASE}/gateways/`;
+  // /alarms/ returns alarms across all companies, so — same as the alarms
+  // page — we scope it client-side against the (already scoped) gateway
+  // list for non-admin/operator roles.
+  const allAlarmsQuery = useAllAlarms({ refetchInterval: 10_000 });
+  const rawAlarms = allAlarmsQuery.data ?? [];
 
-      const [resGw, resAlarm] = await Promise.allSettled([
-        fetch(gwUrl, { headers, cache: "no-store" }),
-        fetch(`${API_BASE}/alarms/`, { headers, cache: "no-store" }),
-      ]);
+  const alarms = useMemo(() => {
+    if (!isCompanyScoped) return rawAlarms;
+    const scopedGatewayIds = new Set<number>(gateways.map((g: any) => g.gateway_id));
+    return rawAlarms.filter((a: any) => scopedGatewayIds.has(a.gateway_id));
+  }, [rawAlarms, gateways, isCompanyScoped]);
 
-      if (resGw.status === "fulfilled" && resGw.value.ok)
-        setGateways((await resGw.value.json()).data ?? []);
-
-      if (resAlarm.status === "fulfilled" && resAlarm.value.ok)
-        setAlarms((await resAlarm.value.json()).data ?? []);
-    } catch (err) {
-      console.error("fetchData error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isCompanyScoped, userCompanyId]);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const isLoading = gatewaysQuery.isLoading || allAlarmsQuery.isLoading;
 
   const totalGateways = gateways.length;
-  const onlineGateways = gateways.filter((g) => g.status === "online").length;
+  const onlineGateways = gateways.filter((g: any) => g.status === "online").length;
   const offlineGateways = totalGateways - onlineGateways;
-  const activeAlarms = alarms.filter((a) => a.status === "ACTIVE");
+  const activeAlarms = alarms.filter((a: any) => a.status === "ACTIVE");
 
   const recentOffline = gateways
-    .filter((g) => g.status === "offline")
+    .filter((g: any) => g.status === "offline")
     .sort(
-      (a, b) =>
+      (a: any, b: any) =>
         new Date(b.last_ping ?? 0).getTime() - new Date(a.last_ping ?? 0).getTime()
     )
     .slice(0, 4);

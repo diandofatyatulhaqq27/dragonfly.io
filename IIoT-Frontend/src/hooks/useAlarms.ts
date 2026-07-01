@@ -29,6 +29,31 @@ export function useAlarms() {
   });
 }
 
+/**
+ * Fetch ALL alarms (not just "recent") from /alarms/ — used by the
+ * dashboard overview page. This is a different endpoint from useAlarms()
+ * (/alarms/recent), so it gets its own query key to avoid mixing caches
+ * that represent different response shapes/scopes.
+ */
+export function useAllAlarms(options?: { refetchInterval?: number }) {
+  return useQuery({
+    queryKey: ["alarms", "all"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/alarms/`, {
+        method: "GET",
+        cache: "no-store",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Gagal menarik data alarm dari server.");
+
+      const result = await res.json();
+      return (result.data ?? []) as any[];
+    },
+    staleTime: 5_000,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
 export function useCreateAlarm() {
   const queryClient = useQueryClient();
   return useMutation({
