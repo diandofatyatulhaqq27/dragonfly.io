@@ -2,9 +2,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { LayoutGrid, Loader2, Pencil, X, Check, Plus } from "lucide-react";
-import ReactGridLayout from "react-grid-layout/legacy";
+import ReactGridLayout, {WidthProvider} from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 
 import { getLocalUser, isReadOnlyRole } from "@/lib/api";
 import { WidgetItem, getLatestPayload, defaultGridPos } from "@/lib/widget-config";
@@ -17,7 +16,7 @@ import {
 
 const COLS  = 80;
 const ROW_H = 80;
-const GridLayout = ReactGridLayout as any;
+const GridLayout = WidthProvider(ReactGridLayout as any)as any;
 
 type RGLLayout = {
   i: string; x: number; y: number; w: number; h: number; minW?: number; minH?: number;
