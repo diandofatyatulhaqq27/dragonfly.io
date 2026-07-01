@@ -58,24 +58,6 @@ export function useProjectGateways(
   });
 }
 
-/** Devices attached to a gateway. */
-export function useGatewayDevices(gatewayId?: string | number) {
-  return useQuery({
-    queryKey: ["devices", String(gatewayId)],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/devices/?gateway_id=${gatewayId}`, {
-        cache: "no-store",
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error("Gagal mengambil data device.");
-      const r = await res.json();
-      return (r.data ?? []) as any[];
-    },
-    enabled: !!gatewayId,
-    staleTime: 30_000,
-  });
-}
-
 /**
  * Pre-aggregated chart data for every "chart" / "bar" widget in `widgets`.
  *

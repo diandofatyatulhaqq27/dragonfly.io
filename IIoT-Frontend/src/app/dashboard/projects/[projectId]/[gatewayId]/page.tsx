@@ -14,7 +14,6 @@ import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard
 import {
   useGatewayDetail,
   useProjectGateways,
-  useGatewayDevices,
   useWidgetChartData,
   useUpdateGatewayConfig,
 } from "@/hooks/useGatewayDetail";
@@ -93,7 +92,6 @@ export default function GatewayDetailPage() {
     refetchInterval: 5000, // same cadence as the old polling loop
   });
   const { data: projectGateways = [] } = useProjectGateways(projectId, { refetchInterval: 5000 });
-  const { data: devices = [] } = useGatewayDevices(gatewayId);
 
   const logs = gatewayInfo?.logs ?? [];
 
@@ -328,7 +326,7 @@ export default function GatewayDetailPage() {
                 )}
               </div>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                Project #{projectId} · Gateway #{gatewayId} · {devices.length} Device
+                Project #{projectId} · Gateway #{gatewayId}
               </p>
             </div>
           </div>
