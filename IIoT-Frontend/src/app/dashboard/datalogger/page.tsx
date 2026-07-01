@@ -1,155 +1,81 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Calendar, Download, RefreshCcw, Bell, FileText,
   Loader2, ChevronLeft, ChevronRight, AlertTriangle, Filter, SlidersHorizontal, Cpu, Clock
 } from "lucide-react";
-import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 
-interface Pagination {
-  page: number;
-  page_size: number;
-  total_records: number;
-  total_pages: number;
-}
-
-type TabType = "gateway_logs" | "alarm_logs";
+import { useProjects } from "@/hooks/useProjects";
+import { useGateways } from "@/hooks/useGateways";
+import { useHistoricalLogs, LogsTab } from "@/hooks/useHistoricalLogs";
 
 export default function DataLoggerPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("gateway_logs");
-  const [projectsList, setProjectsList] = useState<any[]>([]);
-  const [gatewaysList, setGatewaysList] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<LogsTab>("gateway_logs");
 
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedGateway, setSelectedGateway] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [page, setPage] = useState(1);
 
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1, page_size: 25, total_records: 0, total_pages: 0,
-  });
+  // ─── MASTER DATA ─────────────────────────────────────────────────────
+  // NOTE: gateways here are intentionally UNSCOPED (no company_id filter),
+  // same as the original page — this feeds gatewayName() lookups and the
+  // gateway dropdown for whichever project is selected. useProjects() IS
+  // scoped for non-admin roles, also matching the original.
+  const projectsQuery = useProjects();
+  const gatewaysQuery = useGateways();
 
-  // ─── 1. FETCH MASTER DATA (Projects + Gateways) ─────────────────────
-  const fetchProjects = useCallback(async () => {
-    try {
-      const currentUser = getLocalUser();
-      const currentRole: string = currentUser?.role ?? "client_user";
-      const currentCompanyId: string = String(currentUser?.company_id ?? "");
+  const projectsList = projectsQuery.data ?? [];
+  const gatewaysList = gatewaysQuery.data ?? [];
 
-      let url = `${API_BASE}/projects/`;
-      if (currentRole !== "admin" && currentCompanyId) {
-        url += `?company_id=${currentCompanyId}`;
-      }
-
-      const [resProj, resGw] = await Promise.all([
-        fetch(url, { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/gateways/`, { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-      ]);
-
-      if (resProj.ok) {
-        const result = await resProj.json();
-        const pList = result.data ?? [];
-        setProjectsList(pList);
-        if (pList.length > 0) setSelectedProject(String(pList[0].project_id));
-      }
-
-      if (resGw.ok) {
-        const r = await resGw.json();
-        setGatewaysList(r.data ?? []);
-      }
-    } catch (err) {
-      console.error("Gagal memuat master data data logger:", err);
+  // Default to the first project once the list loads.
+  useEffect(() => {
+    if (projectsList.length > 0 && !selectedProject) {
+      setSelectedProject(String(projectsList[0].project_id));
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsList]);
 
-  useEffect(() => { fetchProjects(); }, [fetchProjects]);
-
-  const gatewaysInSelectedProject = gatewaysList.filter(
-    (g) => String(g.project_id) === String(selectedProject)
+  const gatewaysInSelectedProject = useMemo(
+    () => gatewaysList.filter((g) => String(g.project_id) === String(selectedProject)),
+    [gatewaysList, selectedProject]
+  );
+  const gatewayIdsInProject = useMemo(
+    () => gatewaysInSelectedProject.map((g) => String(g.gateway_id)),
+    [gatewaysInSelectedProject]
   );
 
+  // Reset gateway selection whenever the project changes.
   useEffect(() => {
     setSelectedGateway("");
   }, [selectedProject]);
 
-  // ─── 2. FETCH HISTORICAL LOGS (Gateway Logs atau Alarm Logs) ──
-  const fetchHistoricalData = useCallback(async (page: number = 1) => {
-    if (!selectedProject) return;
-
-    const gatewaysToQuery = selectedGateway
-      ? [selectedGateway]
-      : gatewaysInSelectedProject.map((g) => String(g.gateway_id));
-
-    if (gatewaysToQuery.length === 0) {
-      setLogs([]);
-      setPagination({ page: 1, page_size: 25, total_records: 0, total_pages: 0 });
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const params = new URLSearchParams({ page: String(page), page_size: "25" });
-      if (startDate.trim()) params.set("start_date", startDate);
-      if (endDate.trim())   params.set("end_date", endDate);
-
-      // Mengubah endpoint berdasarkan tab yang aktif (gateways/:id/logs atau gateways/:id/alarms)
-      const endpointSuffix = activeTab === "gateway_logs" ? "logs" : "alarms";
-
-      if (selectedGateway) {
-        const res = await fetch(`${API_BASE}/gateways/${selectedGateway}/${endpointSuffix}?${params}`, {
-          method: "GET", cache: "no-store", headers: getAuthHeaders(),
-        });
-        if (!res.ok) throw new Error(`Gagal memuat data. Status: ${res.status}`);
-        const json = await res.json();
-        setLogs(json.data?.[endpointSuffix] ?? json.data?.logs ?? []);
-        setPagination(json.data?.pagination ?? { page: 1, page_size: 25, total_records: 0, total_pages: 0 });
-      } else {
-        const results = await Promise.all(
-          gatewaysToQuery.map((gwId) =>
-            fetch(`${API_BASE}/gateways/${gwId}/${endpointSuffix}?${params}`, {
-              method: "GET", cache: "no-store", headers: getAuthHeaders(),
-            }).then((r) => (r.ok ? r.json() : { data: { [endpointSuffix]: [] } }))
-          )
-        );
-        const combined = results.flatMap((r) => r.data?.[endpointSuffix] ?? r.data?.logs ?? []);
-        
-        // Pengurutan berdasarkan tanggal (created_at untuk logs biasa, triggered_at untuk alarms)
-        combined.sort((a, b) => {
-          const timeA = new Date(a.created_at || a.triggered_at).getTime();
-          const timeB = new Date(b.created_at || b.triggered_at).getTime();
-          return timeB - timeA;
-        });
-
-        setLogs(combined);
-        setPagination({
-          page: 1,
-          page_size: 25,
-          total_records: combined.length,
-          total_pages: Math.ceil(combined.length / 25),
-        });
-      }
-    } catch (err: any) {
-      setError(err.message ?? "Terjadi kesalahan saat memuat data.");
-      setLogs([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedProject, selectedGateway, startDate, endDate, gatewaysInSelectedProject, activeTab]);
-
+  // Reset to page 1 whenever any filter changes.
   useEffect(() => {
-    if (selectedProject) fetchHistoricalData(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPage(1);
   }, [selectedProject, selectedGateway, startDate, endDate, activeTab]);
+
+  // ─── HISTORICAL LOGS ─────────────────────────────────────────────────
+  const logsQuery = useHistoricalLogs({
+    activeTab,
+    selectedProject,
+    selectedGateway,
+    gatewayIdsInProject,
+    startDate,
+    endDate,
+    page,
+  });
+
+  const logs = logsQuery.data?.logs ?? [];
+  const pagination = logsQuery.data?.pagination ?? { page: 1, page_size: 25, total_records: 0, total_pages: 0 };
+  const isLoading = logsQuery.isFetching;
+  const error = logsQuery.error?.message ?? null;
 
   // Mengambil channel dinamis dari objek JSON payload (hanya berlaku di tab gateway_logs)
   const dynamicChannels = Array.from(
-    new Set(logs.flatMap((log) => {
+    new Set(logs.flatMap((log: any) => {
       if (activeTab !== "gateway_logs" || !log.payload || typeof log.payload !== "object") return [];
       return Object.keys(log.payload);
     }))
@@ -158,19 +84,19 @@ export default function DataLoggerPage() {
   const gatewayName = (gatewayId: any) =>
     gatewaysList.find((g) => g.gateway_id === gatewayId)?.name ?? `Gateway #${gatewayId ?? "—"}`;
 
-  // ─── 3. EXPORT CSV ───────────────────────────────────────────────────────
+  // ─── EXPORT CSV ───────────────────────────────────────────────────────
   const handleExportCSV = () => {
     if (logs.length === 0) return alert("Tidak ada data untuk di-export!");
     const projectName = projectsList.find((p) => String(p.project_id) === String(selectedProject))?.display_name ?? selectedProject;
     const gwLabel = selectedGateway ? gatewayName(Number(selectedGateway)) : "SEMUA_GATEWAY";
 
     let csv = "data:text/csv;charset=utf-8,";
-    
+
     if (activeTab === "gateway_logs") {
       csv += `AUDIT REPORT TELEMETRI DATA LOGGER: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
       csv += ["No", "Timestamp", "Gateway", ...dynamicChannels].join(",") + "\n";
 
-      logs.forEach((log, i) => {
+      logs.forEach((log: any, i: number) => {
         const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
         const row = [
           i + 1,
@@ -187,7 +113,7 @@ export default function DataLoggerPage() {
       csv += `AUDIT REPORT ALARM HISTORY: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
       csv += ["No", "Triggered At", "Gateway", "Alarm Name", "MQTT Key", "Message", "Verified At", "Verified By"].join(",") + "\n";
 
-      logs.forEach((log, i) => {
+      logs.forEach((log: any, i: number) => {
         const trigTime = log.triggered_at ? new Date(log.triggered_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
         const verTime = log.verified_at ? new Date(log.verified_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
         const row = [
@@ -213,7 +139,7 @@ export default function DataLoggerPage() {
   };
 
   const handlePageChange = (newPage: number) => {
-    fetchHistoricalData(newPage);
+    setPage(newPage);
   };
 
   return (
@@ -227,10 +153,7 @@ export default function DataLoggerPage() {
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id as TabType);
-              setLogs([]);
-            }}
+            onClick={() => setActiveTab(tab.id as LogsTab)}
             className={`flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer border-none ${
               activeTab === tab.id
                 ? "bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-sm"
@@ -314,7 +237,7 @@ export default function DataLoggerPage() {
           </button>
 
           <button
-            onClick={() => fetchHistoricalData(pagination.page)}
+            onClick={() => logsQuery.refetch()}
             disabled={!selectedProject}
             className="p-2.5 bg-slate-50 dark:bg-slate-900/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border-none cursor-pointer disabled:opacity-40"
           >
@@ -325,7 +248,7 @@ export default function DataLoggerPage() {
         {/* ── TABLE INFO BAR ── */}
         <div className="px-4 py-2.5 border-b border-slate-50 dark:border-slate-700 flex items-center justify-between">
           <span className="font-black text-[9px] uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-            <SlidersHorizontal className="w-3 h-3 text-blue-600 dark:text-blue-400" /> 
+            <SlidersHorizontal className="w-3 h-3 text-blue-600 dark:text-blue-400" />
             {activeTab === "gateway_logs" ? "Data Logger Channel Transmissions" : "System Core Alarm Anomalies History"}
           </span>
           <span className="text-[9px] font-mono font-black uppercase text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-900/50">
@@ -343,7 +266,7 @@ export default function DataLoggerPage() {
                   <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Timestamp</div>
                 </th>
                 <th className="p-4 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest w-40">Gateway</th>
-                
+
                 {/* Header dinamis conditional per tab */}
                 {activeTab === "gateway_logs" ? (
                   dynamicChannels.map((ch) => (
@@ -377,7 +300,7 @@ export default function DataLoggerPage() {
                   </td>
                 </tr>
               ) : logs.length > 0 ? (
-                logs.map((log, index) => (
+                logs.map((log: any, index: number) => (
                   <tr key={log.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/20 transition-colors">
                     <td className="p-4 text-center text-slate-400 dark:text-slate-600 font-bold">
                       {(pagination.page - 1) * pagination.page_size + index + 1}
