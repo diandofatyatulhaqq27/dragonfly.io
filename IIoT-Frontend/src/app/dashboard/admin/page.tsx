@@ -5,20 +5,54 @@ import {
   Users, Building2, CheckCircle, Search, Loader2, Eye, EyeOff,
   AlertTriangle, RefreshCcw, Trash2, Edit2, X, AlertCircle, Plus, Link2, ShieldAlert
 } from "lucide-react";
-import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
+import { getLocalUser } from "@/lib/api";
+
+import { useUsers, useUpdateUser, useDeleteUser, useGenerateResetLink } from "@/hooks/useUsers";
+import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany } from "@/hooks/useCompanies";
 
 type TabType = 'users' | 'companies';
+
+function InvitationCodeCell({ code }: { code: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+
+    if (isVisible) {
+      // Set timer untuk otomatis menyembunyikan kembali setelah 10 detik (10000 ms)
+      timer = setTimeout(() => {
+        setIsVisible(false);
+      }, 10000);
+    }
+
+    // Bersihkan timer jika user menutup manual sebelum 10 detik atau komponen di-unmount
+    return () => clearTimeout(timer);
+  }, [isVisible]);
+
+  return (
+    <div className="flex items-center gap-2 w-full h-full min-h-[32px]">
+      <span className={`font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30 transition-all duration-300 ${
+        isVisible ? "blur-none" : "blur-sm select-none"
+      }`}>
+        {code}
+      </span>
+
+      <button
+        onClick={() => setIsVisible(!isVisible)}
+        className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
+      >
+        {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+}
 
 export default function MasterAdminPage() {
   const router = useRouter();
 
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('users');
-  const [data, setData] = useState<any[]>([]);
-  const [companiesList, setCompaniesList] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -29,8 +63,6 @@ export default function MasterAdminPage() {
     address: "",
     invitation_code: ""
   });
-
-  const [isLinkGenerating, setIsLinkGenerating] = useState(false);
 
   // 1. VALIDASI SECURITY GUARD
   useEffect(() => {
@@ -54,72 +86,41 @@ export default function MasterAdminPage() {
     checkAdminAuthorization();
   }, [router]);
 
-  // 2. FETCH DATA UTAMA TABEL
-  const fetchData = async () => {
-    if (isAuthorized === false) return;
-    setIsLoading(true);
-    setError(null);
+  // 2. DATA
+  // Both queries are gated on isAuthorized so we never hit the API before
+  // the guard above has confirmed the user is an admin. companiesList is
+  // needed regardless of activeTab (used for the users-tab company
+  // lookup + dropdown), so it stays enabled across both tabs.
+  const usersQuery = useUsers({ enabled: isAuthorized === true });
+  const companiesQuery = useCompanies({ enabled: isAuthorized === true });
 
-    try {
-      const url = `${API_BASE}/${activeTab}/`;
+  const createCompany = useCreateCompany();
+  const updateCompany = useUpdateCompany();
+  const deleteCompany = useDeleteCompany();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  const generateResetLink = useGenerateResetLink();
 
-      const res = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: getAuthHeaders(),
-      });
+  const companiesList = companiesQuery.data ?? [];
+  const data = activeTab === 'users' ? (usersQuery.data ?? []) : companiesList;
+  const isLoading = activeTab === 'users' ? usersQuery.isLoading : companiesQuery.isLoading;
+  const error = (activeTab === 'users' ? usersQuery.error?.message : companiesQuery.error?.message) ?? null;
 
-      if (!res.ok) throw new Error(`Gagal mengambil data ${activeTab} dari FastAPI`);
-
-      const result = await res.json();
-      setData(result.data || []);
-    } catch (err: any) {
-      setError(err.message);
-      setData([]);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleRefresh = () => {
+    if (activeTab === 'users') usersQuery.refetch();
+    else companiesQuery.refetch();
   };
-
-  const fetchCompaniesList = async () => {
-    if (isAuthorized === false) return;
-    try {
-      const res = await fetch(`${API_BASE}/companies/`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const result = await res.json();
-        setCompaniesList(result.data || []);
-      }
-    } catch (err) {
-      console.error("Gagal sinkronisasi daftar perusahaan:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (isAuthorized === true) {
-      fetchData();
-      fetchCompaniesList();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, isAuthorized]);
 
   const handleDelete = async (id: any, displayName: string) => {
     const confirmDelete = confirm(`Apakah Anda yakin ingin menghapus "${displayName}"? Data ini tidak bisa dikembalikan.`);
+    if (!confirmDelete) return;
 
-    if (confirmDelete) {
-      try {
-        const url = `${API_BASE}/${activeTab}/${id}`;
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeaders() });
-        const resData = await res.json();
-
-        if (res.ok) {
-          alert("Data berhasil dihapus!");
-          setData(data.filter(item => item.id !== id));
-        } else {
-          alert(resData.detail || "Gagal menghapus.");
-        }
-      } catch (err) {
-        alert("Error koneksi ke server FastAPI.");
-      }
+    try {
+      if (activeTab === 'users') await deleteUser.mutateAsync(id);
+      else await deleteCompany.mutateAsync(id);
+      alert("Data berhasil dihapus!");
+    } catch (err: any) {
+      alert(err.message ?? "Gagal menghapus.");
     }
   };
 
@@ -132,28 +133,17 @@ export default function MasterAdminPage() {
     if (e) e.preventDefault();
 
     const payload = customPayload || editingItem;
-    const idParam = payload.id;
 
     try {
-      const res = await fetch(`${API_BASE}/${activeTab}/${idParam}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
+      if (activeTab === 'users') await updateUser.mutateAsync(payload);
+      else await updateCompany.mutateAsync(payload);
 
-      const resData = await res.json();
-
-      if (res.ok) {
-        if (!customPayload) {
-          alert("Data berhasil diperbarui!");
-          setIsEditModalOpen(false);
-        }
-        fetchData();
-      } else {
-        alert(resData.detail || "Gagal memperbarui data ke database.");
+      if (!customPayload) {
+        alert("Data berhasil diperbarui!");
+        setIsEditModalOpen(false);
       }
-    } catch (err) {
-      alert("Error koneksi server FastAPI.");
+    } catch (err: any) {
+      alert(err.message ?? "Gagal memperbarui data ke database.");
     }
   };
 
@@ -161,29 +151,16 @@ export default function MasterAdminPage() {
     e.preventDefault();
 
     try {
-      const res = await fetch(`${API_BASE}/companies/`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: newCompanyForm.name.trim(),
-          address: newCompanyForm.address.trim(),
-          invitation_code: newCompanyForm.invitation_code.trim().toUpperCase()
-        })
+      await createCompany.mutateAsync({
+        name: newCompanyForm.name.trim(),
+        address: newCompanyForm.address.trim(),
+        invitation_code: newCompanyForm.invitation_code.trim().toUpperCase(),
       });
-
-      const resData = await res.json();
-
-      if (res.ok) {
-        alert("Organisasi Tenant Baru Berhasil Didaftarkan!");
-        setIsCreateModalOpen(false);
-        setNewCompanyForm({ name: "", address: "", invitation_code: "" });
-        fetchData();
-        fetchCompaniesList();
-      } else {
-        alert(resData.detail || "Gagal menyimpan organisasi baru.");
-      }
-    } catch (err) {
-      alert("Gagal menghubungi server FastAPI.");
+      alert("Organisasi Tenant Baru Berhasil Didaftarkan!");
+      setIsCreateModalOpen(false);
+      setNewCompanyForm({ name: "", address: "", invitation_code: "" });
+    } catch (err: any) {
+      alert(err.message ?? "Gagal menyimpan organisasi baru.");
     }
   };
 
@@ -191,30 +168,17 @@ export default function MasterAdminPage() {
     if (!editingItem?.id) return;
 
     try {
-      setIsLinkGenerating(true);
-      const res = await fetch(`${API_BASE}/users/generate-reset-token/${editingItem.id}`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
-
-      const resData = await res.json();
-
-      if (res.ok && resData.reset_link) {
-        await navigator.clipboard.writeText(resData.reset_link);
-        alert(
-          `SUCCESS: SECURE LINK GENERATED!\n\n` +
-          `Tautan pemulihan mandiri berhasil disalin otomatis ke clipboard.\n` +
-          `Silakan teruskan token durasi 15 menit ini ke pengguna:\n\n` +
-          `${resData.reset_link}`
-        );
-        setIsEditModalOpen(false);
-      } else {
-        alert(resData.detail || "Gagal menjahit token keamanan baru.");
-      }
-    } catch (err) {
-      alert("Gagal berkomunikasi dengan server FastAPI.");
-    } finally {
-      setIsLinkGenerating(false);
+      const resData = await generateResetLink.mutateAsync(editingItem.id);
+      await navigator.clipboard.writeText(resData.reset_link);
+      alert(
+        `SUCCESS: SECURE LINK GENERATED!\n\n` +
+        `Tautan pemulihan mandiri berhasil disalin otomatis ke clipboard.\n` +
+        `Silakan teruskan token durasi 15 menit ini ke pengguna:\n\n` +
+        `${resData.reset_link}`
+      );
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      alert(err.message ?? "Gagal berkomunikasi dengan server FastAPI.");
     }
   };
 
@@ -226,46 +190,10 @@ export default function MasterAdminPage() {
     handleUpdate(undefined, updatedUser);
   };
 
-  const filteredData = data.filter(item => {
+  const filteredData = data.filter((item: any) => {
     const s = search.toLowerCase();
     return Object.values(item).some(val => String(val).toLowerCase().includes(s));
   });
-
-function InvitationCodeCell({ code }: { code: string }) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    
-    if (isVisible) {
-      // Set timer untuk otomatis menyembunyikan kembali setelah 10 detik (10000 ms)
-      timer = setTimeout(() => {
-        setIsVisible(false);
-      }, 10000);
-    }
-
-    // Bersihkan timer jika user menutup manual sebelum 10 detik atau komponen di-unmount
-    return () => clearTimeout(timer);
-  }, [isVisible]);
-
-  return (
-    // Tambahkan h-full dan w-full di sini agar flexbox menjangkau seluruh area td
-    <div className="flex items-center gap-2 w-full h-full min-h-[32px]">
-      <span className={`font-mono text-blue-600 dark:text-blue-400 font-black tracking-widest bg-blue-50/40 dark:bg-blue-950/20 px-2.5 py-1 rounded-lg text-[10px] border border-blue-100/50 dark:border-blue-900/30 transition-all duration-300 ${
-        isVisible ? "blur-none" : "blur-sm select-none"
-      }`}>
-        {code}
-      </span>
-      
-      <button
-        onClick={() => setIsVisible(!isVisible)}
-        className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
-      >
-        {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-      </button>
-    </div>
-  );
-}
 
   // ========================================================
   // RENDERING
@@ -337,7 +265,7 @@ function InvitationCodeCell({ code }: { code: string }) {
             </button>
           )}
 
-          <button onClick={fetchData} className="p-2.5 bg-slate-50 dark:bg-slate-900/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border-none cursor-pointer">
+          <button onClick={handleRefresh} className="p-2.5 bg-slate-50 dark:bg-slate-900/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border-none cursor-pointer">
             <RefreshCcw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
@@ -376,7 +304,7 @@ function InvitationCodeCell({ code }: { code: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-700/40">
-                {filteredData.length > 0 ? filteredData.map((item, idx) => (
+                {filteredData.length > 0 ? filteredData.map((item: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors group text-[11px]">
 
                     {activeTab === 'users' && (
@@ -387,7 +315,7 @@ function InvitationCodeCell({ code }: { code: string }) {
                         </td>
                         <td className="p-4">
                           <span className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded-lg border border-blue-100 dark:border-blue-900/50">
-                            {companiesList.find(c => c.id === item.company_id)?.name || `ID: ${item.company_id}`}
+                            {companiesList.find((c: any) => c.id === item.company_id)?.name || `ID: ${item.company_id}`}
                           </span>
                         </td>
                         <td className="p-4 font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 text-[9px]">{item.role}</td>
@@ -468,7 +396,14 @@ function InvitationCodeCell({ code }: { code: string }) {
               </div>
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
-                <button type="submit" className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg shadow-blue-100/40 dark:shadow-none border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all">Register Tenant</button>
+                <button
+                  type="submit"
+                  disabled={createCompany.isPending}
+                  className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg shadow-blue-100/40 dark:shadow-none border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  {createCompany.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Register Tenant
+                </button>
               </div>
             </form>
           </div>
@@ -501,7 +436,7 @@ function InvitationCodeCell({ code }: { code: string }) {
                       onChange={(e) => setEditingItem({...editingItem, company_id: parseInt(e.target.value)})}
                       className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] font-black border-none ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-600 outline-none cursor-pointer"
                     >
-                      {companiesList.map((company) => (
+                      {companiesList.map((company: any) => (
                         <option key={company.id} value={company.id} className="dark:bg-slate-800">
                           {company.name.toUpperCase()} (ID: {company.id})
                         </option>
@@ -538,11 +473,11 @@ function InvitationCodeCell({ code }: { code: string }) {
                   <div className="pt-1">
                     <button
                       type="button"
-                      disabled={isLinkGenerating}
+                      disabled={generateResetLink.isPending}
                       onClick={handleGenerateResetLink}
                       className="w-full bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-black py-3 rounded-xl text-[9px] uppercase tracking-widest transition-all border border-blue-200 dark:border-blue-900/60 cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
                     >
-                      {isLinkGenerating ? (
+                      {generateResetLink.isPending ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" /> Generating Token...
                         </>
@@ -575,7 +510,14 @@ function InvitationCodeCell({ code }: { code: string }) {
 
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
-                <button type="submit" className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg shadow-blue-100/40 dark:shadow-none border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all">Update Data</button>
+                <button
+                  type="submit"
+                  disabled={updateUser.isPending || updateCompany.isPending}
+                  className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg shadow-blue-100/40 dark:shadow-none border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  {(updateUser.isPending || updateCompany.isPending) && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Update Data
+                </button>
               </div>
             </form>
           </div>
