@@ -1,17 +1,24 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft, Plus, LayoutGrid, Loader2,
   ChevronLeft, ChevronRight, Cpu, Pencil, X, Check,
 } from "lucide-react";
-import ReactGridLayout from "react-grid-layout";
+import ReactGridLayout from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
-import { API_BASE, getAuthHeaders, getLocalUser, isReadOnlyRole } from "@/lib/api";
+import { getLocalUser, isReadOnlyRole } from "@/lib/api";
 import { WidgetItem, getLatestPayload, defaultGridPos } from "@/lib/widget-config";
 import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard";
+import {
+  useGatewayDetail,
+  useProjectGateways,
+  useGatewayDevices,
+  useWidgetChartData,
+  useUpdateGatewayConfig,
+} from "@/hooks/useGatewayDetail";
 
 const COLS  = 80;
 const ROW_H = 80;
@@ -26,19 +33,12 @@ function itemToLayout(item: WidgetItem, index: number): RGLLayout {
 
 export default function GatewayDetailPage() {
   const router = useRouter();
-  const { projectId, gatewayId } = useParams();
-
-  const [logs,            setLogs]            = useState<any[]>([]);
-  const [gatewayInfo,     setGatewayInfo]     = useState<any>(null);
-  const [projectGateways, setProjectGateways] = useState<any[]>([]);
-  const [devices,         setDevices]         = useState<any[]>([]);
-  const [loading,         setLoading]         = useState(true);
+  const { projectId, gatewayId } = useParams<{ projectId: string; gatewayId: string }>();
 
   const [isEditMode,      setIsEditMode]      = useState(false);
   const [editConfig,      setEditConfig]      = useState<WidgetItem[]>([]);
   const [selectedIdx,     setSelectedIdx]     = useState<number | null>(null);
   const [layouts,         setLayouts]         = useState<RGLLayout[]>([]);
-  const [chartDataMap,    setChartDataMap]    = useState<Record<string, any[]>>({});
   const [containerWidth,  setContainerWidth]  = useState(1200);
 
   // ── Floating settings panel drag state ───────────────────────────────────
@@ -47,6 +47,25 @@ export default function GatewayDetailPage() {
   const dragOffset = useRef({ x: 0, y: 0 });
 
   const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
+
+  // ── Server state (React Query) ────────────────────────────────────────────
+  const { data: gatewayInfo, isLoading: gatewayLoading } = useGatewayDetail(gatewayId, {
+    refetchInterval: 5000, // same cadence as the old polling loop
+  });
+  const { data: projectGateways = [] } = useProjectGateways(projectId, { refetchInterval: 5000 });
+  const { data: devices = [] } = useGatewayDevices(gatewayId);
+
+  const logs = gatewayInfo?.logs ?? [];
+
+  // While editing, chart data follows the in-progress editConfig (so tweaking
+  // a panel's range/key live-refetches just that panel). Otherwise it follows
+  // the saved config from the server.
+  const chartDataMap = useWidgetChartData(
+    gatewayId,
+    isEditMode ? editConfig : (gatewayInfo?.config ?? [])
+  );
+
+  const updateConfigMutation = useUpdateGatewayConfig(gatewayId);
 
   useEffect(() => {
     setPanelPos({ x: window.innerWidth - 320, y: 80 });
@@ -81,92 +100,18 @@ export default function GatewayDetailPage() {
     return () => obs.disconnect();
   }, []);
 
-  // ── Fetch chart data terpusat (pre-aggregated dari backend) ──────────────
-  const fetchChartDataForWidgets = useCallback(async (configList: WidgetItem[]) => {
-    if (!gatewayId || !configList.length) return;
-
-    const chartWidgets = configList.filter((item) => item.type === "chart" || item.type === "bar");
-    if (!chartWidgets.length) return;
-
-    const newMap: Record<string, any[]> = {};
-
-    await Promise.all(
-      chartWidgets.map(async (item, idx) => {
-        const isMulti   = item.type === "chart" && (item.keys?.length ?? 0) > 1;
-        const keysParam = isMulti ? item.keys!.join(",") : item.key;
-        const range     = item.range ?? "1h";
-        if (!keysParam) return;
-
-        const mapKey = `${item.type}-${idx}-${item.key}`;
-
-        try {
-          const res = await fetch(
-            `${API_BASE}/gateways/${gatewayId}/chart?range=${range}&keys=${keysParam}`,
-            { method: "GET", cache: "no-store", headers: getAuthHeaders() }
-          );
-          if (res.ok) {
-            const r = await res.json();
-            newMap[mapKey] = r.data ?? [];
-          }
-        } catch (err) {
-          console.error(`Chart fetch error (idx ${idx}):`, err);
-        }
-      })
-    );
-
-    setChartDataMap((prev) => ({ ...prev, ...newMap }));
-  }, [gatewayId]);
-
-  // ── Data fetching ─────────────────────────────────────────────────────────
-  const fetchAllData = useCallback(async () => {
-    if (!projectId || !gatewayId) return;
-    try {
-      const [resGw, resProject, resDev] = await Promise.all([
-        fetch(`${API_BASE}/gateways/${gatewayId}`,              { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/projects/${projectId}`,              { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/devices/?gateway_id=${gatewayId}`,   { method: "GET", cache: "no-store", headers: getAuthHeaders() }),
-      ]);
-
-      if (resGw.ok) {
-        const r = await resGw.json();
-        const data = r.data;
-        if (data) {
-          setGatewayInfo(data);
-          setLogs(data.logs ?? []);
-          const cfg: WidgetItem[] = data.config ?? [];
-          if (!isEditMode) {
-            setEditConfig(cfg);
-            setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
-            fetchChartDataForWidgets(cfg);
-          } else {
-            fetchChartDataForWidgets(editConfig);
-          }
-        }
-      }
-      if (resProject.ok) {
-        const r = await resProject.json();
-        const gws: any[] = r.data?.gateways ?? [];
-        setProjectGateways([...gws].sort((a, b) => (a.gateway_id ?? a.id ?? 0) - (b.gateway_id ?? b.id ?? 0)));
-      }
-      if (resDev.ok) {
-        const r = await resDev.json();
-        setDevices(r.data ?? []);
-      }
-    } catch (err) {
-      console.error("fetchAllData error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, gatewayId, isEditMode, editConfig, fetchChartDataForWidgets]);
-
+  // ── Sync local editConfig from server config whenever NOT actively editing.
+  // This replaces the old "isEditMode ? fetchChartDataForWidgets(editConfig)
+  // : setEditConfig(cfg)" branch inside fetchAllData.
   useEffect(() => {
-    fetchAllData();
-    const iv = setInterval(fetchAllData, 5000);
-    return () => clearInterval(iv);
-  }, [fetchAllData]);
+    if (isEditMode) return;
+    const cfg: WidgetItem[] = gatewayInfo?.config ?? [];
+    setEditConfig(cfg);
+    setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
+  }, [gatewayInfo, isEditMode]);
 
   const currentIndex = projectGateways.findIndex(
-    (g) => String(g.gateway_id ?? g.id) === String(gatewayId)
+    (g: any) => String(g.gateway_id ?? g.id) === String(gatewayId)
   );
 
   const isOnline = (() => {
@@ -211,39 +156,29 @@ export default function GatewayDetailPage() {
     setEditConfig((prev) => {
       const updated = [...prev];
       (updated[i] as any)[field] = val;
-      // Re-fetch chart jika range/key berubah
-      if (field === "range" || field === "key" || field === "keys") {
-        fetchChartDataForWidgets(updated);
-      }
       return updated;
     });
+    // No manual re-fetch needed: useWidgetChartData's query keys include
+    // range/keysParam, so changing them here auto-triggers a refetch.
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const handleSaveConfig = async () => {
     if (isReadOnly) return alert("Akses ditolak!");
     try {
-      const res = await fetch(`${API_BASE}/gateways/${gatewayId}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          gateway_id: Number(gatewayId),
-          name:       gatewayInfo?.name ?? "",
-          hmi_code:   gatewayInfo?.hmi_code ?? null,
-          project_id: Number(projectId),
-          status:     gatewayInfo?.status ?? "offline",
-          config:     editConfig,
-        }),
+      await updateConfigMutation.mutateAsync({
+        gateway_id: Number(gatewayId),
+        name:       gatewayInfo?.name ?? "",
+        hmi_code:   gatewayInfo?.hmi_code ?? null,
+        project_id: Number(projectId),
+        status:     gatewayInfo?.status ?? "offline",
+        config:     editConfig,
       });
-      if (res.ok) {
-        setIsEditMode(false);
-        setSelectedIdx(null);
-        fetchAllData();
-      } else {
-        const result = await res.json().catch(() => ({}));
-        alert(result?.detail ?? "Gagal menyimpan konfigurasi.");
-      }
-    } catch { alert("Gagal menghubungi server."); }
+      setIsEditMode(false);
+      setSelectedIdx(null);
+    } catch (err: any) {
+      alert(err?.message ?? "Gagal menyimpan konfigurasi.");
+    }
   };
 
   const exitEditMode = () => {
@@ -255,7 +190,7 @@ export default function GatewayDetailPage() {
   };
 
   // ── Loading state ─────────────────────────────────────────────────────────
-  if (loading && !gatewayInfo) {
+  if (gatewayLoading && !gatewayInfo) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -323,9 +258,12 @@ export default function GatewayDetailPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer border-none">
               <X className="w-3 h-3" /> Batal
             </button>
-            <button onClick={handleSaveConfig}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-600 hover:bg-blue-50 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer border-none shadow">
-              <Check className="w-3 h-3" /> Simpan
+            <button onClick={handleSaveConfig} disabled={updateConfigMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-600 hover:bg-blue-50 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer border-none shadow disabled:opacity-50">
+              {updateConfigMutation.isPending
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Check className="w-3 h-3" />}
+              Simpan
             </button>
           </div>
         </div>
@@ -418,7 +356,7 @@ export default function GatewayDetailPage() {
               resizeHandles={["se"]}
             >
               {editConfig.map((item, index) => {
-                // Hitung index khusus chart widget (konsisten dengan fetchChartDataForWidgets)
+                // Hitung index khusus chart widget (konsisten dengan useWidgetChartData)
                 const chartItems    = editConfig.filter((w) => w.type === "chart" || w.type === "bar");
                 const chartWidgetIdx = chartItems.indexOf(item);
                 const mapKey = (item.type === "chart" || item.type === "bar")
