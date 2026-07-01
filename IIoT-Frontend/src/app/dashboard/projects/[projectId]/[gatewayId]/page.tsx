@@ -17,6 +17,7 @@ import {
   useWidgetChartData,
   useUpdateGatewayConfig,
   GatewayNotFoundError,
+  isValidGatewayId,
 } from "@/hooks/useGatewayDetail";
 
 const COLS  = 80;
@@ -218,6 +219,31 @@ export default function GatewayDetailPage() {
     setEditConfig(cfg);
     setLayouts(cfg.map((item, i) => itemToLayout(item, i)));
   };
+
+  // ── Invalid gatewayId (e.g. a stale "no-gateway" placeholder link) ─────────
+  // Checked before the loading state so it short-circuits instantly instead
+  // of waiting for the query to spin through its retries.
+  if (!isValidGatewayId(gatewayId)) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 flex items-center justify-center mb-4">
+          <Cpu className="w-7 h-7 text-rose-500" />
+        </div>
+        <h1 className="text-2xl font-black tracking-tighter text-slate-800 dark:text-slate-100 uppercase italic">
+          404 · Gateway Tidak Ditemukan
+        </h1>
+        <p className="mt-2 max-w-sm text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+          Project ini belum punya gateway yang terhubung.
+        </p>
+        <button
+          onClick={() => router.push(`/dashboard/projects/${projectId}`)}
+          className="mt-6 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer border-none shadow"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Project
+        </button>
+      </div>
+    );
+  }
 
   // ── Loading state ─────────────────────────────────────────────────────────
   if (gatewayLoading && !gatewayInfo) {
