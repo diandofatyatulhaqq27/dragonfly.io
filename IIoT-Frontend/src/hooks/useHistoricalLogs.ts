@@ -114,3 +114,76 @@ export function useHistoricalLogs(params: {
     staleTime: 5_000,
   });
 }
+
+/**
+ * Fetch EVERY row matching the current filters (not just one page) —
+ * used exclusively by CSV export, which needs the full result set
+ * regardless of what's currently paginated on screen.
+ *
+ * Walks pages at the backend's max page_size (500, per the gateways
+ * router's `le=500` constraint) until every page has been collected,
+ * for every relevant gateway, then merges + sorts client-side the same
+ * way the "SEMUA GATEWAY" table view does.
+ *
+ * `MAX_PAGES_PER_GATEWAY` is a hard safety cap (500 x 300 = 150,000 rows
+ * per gateway) so a runaway filter can't loop forever.
+ */
+const EXPORT_PAGE_SIZE = 500;
+const MAX_PAGES_PER_GATEWAY = 300;
+
+export async function fetchAllHistoricalLogsForExport(params: {
+  activeTab: LogsTab;
+  selectedGateway: string;
+  gatewayIdsInProject: string[];
+  startDate: string;
+  endDate: string;
+}): Promise<any[]> {
+  const { activeTab, selectedGateway, gatewayIdsInProject, startDate, endDate } = params;
+  const endpointSuffix = activeTab === "gateway_logs" ? "logs" : "alarms";
+  const idsToQuery = selectedGateway ? [selectedGateway] : gatewayIdsInProject;
+
+  if (idsToQuery.length === 0) return [];
+
+  const fetchAllForGateway = async (gwId: string): Promise<any[]> => {
+    const all: any[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const urlParams = new URLSearchParams({ page: String(page), page_size: String(EXPORT_PAGE_SIZE) });
+      if (startDate.trim()) urlParams.set("start_date", startDate);
+      if (endDate.trim()) urlParams.set("end_date", endDate);
+
+      const res = await fetch(`${API_BASE}/gateways/${gwId}/${endpointSuffix}?${urlParams}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`Gagal memuat data export (Gateway #${gwId}). Status: ${res.status}`);
+
+      const json = await res.json();
+      const rows = (json.data?.[endpointSuffix] ?? json.data?.logs ?? []) as any[];
+      all.push(...rows);
+
+      totalPages = json.data?.pagination?.total_pages ?? 1;
+      page += 1;
+    } while (page <= totalPages && page <= MAX_PAGES_PER_GATEWAY);
+
+    return all;
+  };
+
+  if (selectedGateway) {
+    return fetchAllForGateway(selectedGateway);
+  }
+
+  const perGateway = await Promise.all(idsToQuery.map((id) => fetchAllForGateway(id)));
+  const combined = perGateway.flat();
+
+  combined.sort((a: any, b: any) => {
+    const timeA = new Date(a.created_at || a.triggered_at).getTime();
+    const timeB = new Date(b.created_at || b.triggered_at).getTime();
+    return timeB - timeA;
+  });
+
+  return combined;
+}

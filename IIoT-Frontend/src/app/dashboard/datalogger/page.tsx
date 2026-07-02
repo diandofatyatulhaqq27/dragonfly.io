@@ -8,7 +8,7 @@ import {
 
 import { useProjects } from "@/hooks/useProjects";
 import { useGateways } from "@/hooks/useGateways";
-import { useHistoricalLogs, LogsTab } from "@/hooks/useHistoricalLogs";
+import { useHistoricalLogs, fetchAllHistoricalLogsForExport, LogsTab } from "@/hooks/useHistoricalLogs";
 
 export default function DataLoggerPage() {
   const [activeTab, setActiveTab] = useState<LogsTab>("gateway_logs");
@@ -18,6 +18,10 @@ export default function DataLoggerPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [page, setPage] = useState(1);
+
+  // Export runs a separate fetch-all-pages request in the background,
+  // so it needs its own loading flag distinct from the table's isLoading.
+  const [isExporting, setIsExporting] = useState(false);
 
   // ─── MASTER DATA ─────────────────────────────────────────────────────
   // NOTE: gateways here are intentionally UNSCOPED (no company_id filter),
@@ -85,57 +89,91 @@ export default function DataLoggerPage() {
     gatewaysList.find((g) => g.gateway_id === gatewayId)?.name ?? `Gateway #${gatewayId ?? "—"}`;
 
   // ─── EXPORT CSV ───────────────────────────────────────────────────────
-  const handleExportCSV = () => {
-    if (logs.length === 0) return alert("Tidak ada data untuk di-export!");
-    const projectName = projectsList.find((p) => String(p.project_id) === String(selectedProject))?.display_name ?? selectedProject;
-    const gwLabel = selectedGateway ? gatewayName(Number(selectedGateway)) : "SEMUA_GATEWAY";
-
-    let csv = "data:text/csv;charset=utf-8,";
-
-    if (activeTab === "gateway_logs") {
-      csv += `AUDIT REPORT TELEMETRI DATA LOGGER: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
-      csv += ["No", "Timestamp", "Gateway", ...dynamicChannels].join(",") + "\n";
-
-      logs.forEach((log: any, i: number) => {
-        const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
-        const row = [
-          i + 1,
-          `"${formattedTime}"`,
-          gatewayName(log.gateway_id),
-          ...dynamicChannels.map((ch) => {
-            const val = log.payload?.[ch];
-            return val !== undefined ? (typeof val === "object" ? JSON.stringify(val).replace(/,/g, " ") : val) : "-";
-          }),
-        ];
-        csv += row.join(",") + "\n";
+  // Fetches the FULL result set matching current filters (walking every
+  // page from the server), not just the 25 rows currently rendered in the
+  // table — otherwise a date range spanning thousands of rows only ever
+  // exports whatever page happens to be on screen.
+  const handleExportCSV = async () => {
+    if (!selectedProject) return;
+    setIsExporting(true);
+    try {
+      const allLogs = await fetchAllHistoricalLogsForExport({
+        activeTab,
+        selectedGateway,
+        gatewayIdsInProject,
+        startDate,
+        endDate,
       });
-    } else {
-      csv += `AUDIT REPORT ALARM HISTORY: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
-      csv += ["No", "Triggered At", "Gateway", "Alarm Name", "MQTT Key", "Message", "Verified At", "Verified By"].join(",") + "\n";
 
-      logs.forEach((log: any, i: number) => {
-        const trigTime = log.triggered_at ? new Date(log.triggered_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
-        const verTime = log.verified_at ? new Date(log.verified_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
-        const row = [
-          i + 1,
-          `"${trigTime}"`,
-          gatewayName(log.gateway_id),
-          `"${log.alarm_name ?? "—"}"`,
-          `"${log.mqtt_key ?? "—"}"`,
-          `"${(log.message ?? "").replace(/"/g, '""')}"`,
-          `"${verTime}"`,
-          `"${log.verified_by ?? "—"}"`,
-        ];
-        csv += row.join(",") + "\n";
-      });
+      if (allLogs.length === 0) {
+        alert("Tidak ada data untuk di-export!");
+        return;
+      }
+
+      // Recompute channels from the FULL export set — the on-screen page
+      // might not contain every channel that appears across the whole
+      // filtered range.
+      const exportChannels = Array.from(
+        new Set(allLogs.flatMap((log: any) => {
+          if (activeTab !== "gateway_logs" || !log.payload || typeof log.payload !== "object") return [];
+          return Object.keys(log.payload);
+        }))
+      );
+
+      const projectName = projectsList.find((p) => String(p.project_id) === String(selectedProject))?.display_name ?? selectedProject;
+      const gwLabel = selectedGateway ? gatewayName(Number(selectedGateway)) : "SEMUA_GATEWAY";
+
+      let csv = "data:text/csv;charset=utf-8,";
+
+      if (activeTab === "gateway_logs") {
+        csv += `AUDIT REPORT TELEMETRI DATA LOGGER: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
+        csv += ["No", "Timestamp", "Gateway", ...exportChannels].join(",") + "\n";
+
+        allLogs.forEach((log: any, i: number) => {
+          const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
+          const row = [
+            i + 1,
+            `"${formattedTime}"`,
+            gatewayName(log.gateway_id),
+            ...exportChannels.map((ch) => {
+              const val = log.payload?.[ch];
+              return val !== undefined ? (typeof val === "object" ? JSON.stringify(val).replace(/,/g, " ") : val) : "-";
+            }),
+          ];
+          csv += row.join(",") + "\n";
+        });
+      } else {
+        csv += `AUDIT REPORT ALARM HISTORY: ${String(projectName).toUpperCase()} - ${gwLabel.toUpperCase()}\n`;
+        csv += ["No", "Triggered At", "Gateway", "Alarm Name", "MQTT Key", "Message", "Verified At", "Verified By"].join(",") + "\n";
+
+        allLogs.forEach((log: any, i: number) => {
+          const trigTime = log.triggered_at ? new Date(log.triggered_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
+          const verTime = log.verified_at ? new Date(log.verified_at).toLocaleString("id-ID").replace(/,/g, "") : "—";
+          const row = [
+            i + 1,
+            `"${trigTime}"`,
+            gatewayName(log.gateway_id),
+            `"${log.alarm_name ?? "—"}"`,
+            `"${log.mqtt_key ?? "—"}"`,
+            `"${(log.message ?? "").replace(/"/g, '""')}"`,
+            `"${verTime}"`,
+            `"${log.verified_by ?? "—"}"`,
+          ];
+          csv += row.join(",") + "\n";
+        });
+      }
+
+      const link = document.createElement("a");
+      link.setAttribute("href", encodeURI(csv));
+      link.setAttribute("download", `DATA_LOGGER_${activeTab.toUpperCase()}_PROJECT_${selectedProject}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      alert(err?.message ?? "Gagal meng-export data.");
+    } finally {
+      setIsExporting(false);
     }
-
-    const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csv));
-    link.setAttribute("download", `DATA_LOGGER_${activeTab.toUpperCase()}_PROJECT_${selectedProject}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -230,10 +268,13 @@ export default function DataLoggerPage() {
 
           <button
             onClick={handleExportCSV}
-            disabled={logs.length === 0}
+            disabled={!selectedProject || isExporting}
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider shadow-md active:scale-95 transition-all border-none cursor-pointer whitespace-nowrap disabled:opacity-40"
           >
-            <Download className="w-3.5 h-3.5 stroke-[3]" /> Export CSV
+            {isExporting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Download className="w-3.5 h-3.5 stroke-[3]" />}
+            {isExporting ? "Exporting..." : "Export CSV"}
           </button>
 
           <button
