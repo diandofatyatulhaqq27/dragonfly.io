@@ -25,11 +25,18 @@ app = FastAPI(
 )
 
 # ==============================================================================
-# 1. SETUP CORS
+# 1. SETUP CORS (Diperbarui untuk Deployment Vercel & Hostinger)
 # ==============================================================================
+origins = [
+    "http://localhost:3000",             # Akses Development Lokal
+    "https://dragonfly-io.vercel.app",   # Akses dari Frontend Vercel (URL Terbaru)
+    "https://dragonfly-fe.vercel.app",   # Akses dari Frontend Vercel (URL Lama - dibiarkan sebagai cadangan)
+    # "https://domain-anda.com",         # (Opsional) Buka komen ini jika nanti pakai custom domain
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, # Mengganti ["*"] menjadi daftar origin spesifik demi keamanan produksi
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
