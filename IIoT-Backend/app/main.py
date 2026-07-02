@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from datetime import datetime, timedelta
 from fastapi import FastAPI
@@ -12,10 +15,10 @@ from app.routers.telemetry import archive_old_telemetry
 # MQTT Client (modular)
 from app.mqtt.mqtt_client import MQTTClient
 
-# Import 9 router CRUD
+# Import router CRUD (sessions dihapus — tidak dipakai, digantikan JWT)
 from app.routers import (
     auth, users, companies, projects,
-    gateways, telemetry, alarms, sessions
+    gateways, telemetry, alarms
 )
 
 app = FastAPI(
@@ -28,15 +31,14 @@ app = FastAPI(
 # 1. SETUP CORS (Diperbarui untuk Deployment Vercel & Hostinger)
 # ==============================================================================
 origins = [
-    "http://localhost:3000",             # Akses Development Lokal
-    "https://dragonfly-io.vercel.app",   # Akses dari Frontend Vercel (URL Terbaru)
-    "https://dragonfly-fe.vercel.app",   # Akses dari Frontend Vercel (URL Lama - dibiarkan sebagai cadangan)
-    # "https://domain-anda.com",         # (Opsional) Buka komen ini jika nanti pakai custom domain
+    "http://localhost:3000",
+    "https://dragonfly-io.vercel.app",
+    "https://dragonfly-fe.vercel.app",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # Mengganti ["*"] menjadi daftar origin spesifik demi keamanan produksi
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +57,6 @@ app.include_router(projects.router)
 app.include_router(gateways.router)
 app.include_router(telemetry.router)
 app.include_router(alarms.router)
-app.include_router(sessions.router)
 
 # ==============================================================================
 # 3. MQTT WORKER (Modular: mqtt_client + message_handler + ingestion_service)
@@ -108,22 +109,15 @@ def check_gateway_health():
 # ==============================================================================
 @app.on_event("startup")
 def startup_event():
-    # A. Jalankan MQTT Client Background Loop
     try:
         mqtt_client.connect_and_start()
     except Exception as e:
         print(f"❌ Gagal menyalakan MQTT Worker: {e} (Aplikasi tetap berjalan)")
 
-    # B. Jalankan Scheduler
     try:
         scheduler = BackgroundScheduler()
-
-        # Pembersihan data bulanan
         scheduler.add_job(trigger_monthly_cleanup, 'cron', day=1, hour=1, minute=0)
-
-        # Health check gateway setiap 30 detik
         scheduler.add_job(check_gateway_health, 'interval', seconds=30)
-
         scheduler.start()
         print("⏰ Scheduler Aktif: Cleanup Bulanan + Health Check Gateway (30s)")
     except Exception as e:

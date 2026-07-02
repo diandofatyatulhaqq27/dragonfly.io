@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.database import get_db
 from app.models import Alarm, AlarmHistory
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/alarms", tags=["Alarms"])
 
@@ -26,9 +26,12 @@ class AlarmUpdateSchema(BaseModel):
     status: Optional[str] = "ACTIVE"
 
 
-# 1. CREATE / UPSERT konfigurasi master alarm
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_or_update_alarm(payload: AlarmCreateSchema, db: Session = Depends(get_db)):
+def create_or_update_alarm(
+    payload: AlarmCreateSchema,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "rasindo_operator")),
+):
     try:
         existing_alarm = db.query(Alarm).filter(
             Alarm.gateway_id == payload.gateway_id,
@@ -60,9 +63,13 @@ def create_or_update_alarm(payload: AlarmCreateSchema, db: Session = Depends(get
         raise HTTPException(status_code=500, detail=f"Gagal memproses data alarm ke database: {str(e)}")
 
 
-# 2. UPDATE alarm + handle verify
 @router.put("/{alarm_id}")
-def update_alarm(alarm_id: int, payload: AlarmUpdateSchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_alarm(
+    alarm_id: int,
+    payload: AlarmUpdateSchema,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         db_alarm = db.query(Alarm).filter(Alarm.id == alarm_id).first()
         if not db_alarm:
@@ -75,7 +82,6 @@ def update_alarm(alarm_id: int, payload: AlarmUpdateSchema, db: Session = Depend
         db_alarm.severity = payload.severity or db_alarm.severity
         db_alarm.status = payload.status or db_alarm.status
 
-        # Jika di-verify (RESOLVED), update history terakhir yang belum diverify
         if payload.status == "RESOLVED":
             last_history = (
                 db.query(AlarmHistory)
@@ -101,9 +107,11 @@ def update_alarm(alarm_id: int, payload: AlarmUpdateSchema, db: Session = Depend
         raise HTTPException(status_code=500, detail=f"Gagal memperbarui alarm: {str(e)}")
 
 
-# 3. GET semua alarm
 @router.get("/")
-def get_all_alarms(db: Session = Depends(get_db)):
+def get_all_alarms(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         all_alarms = db.query(Alarm).order_by(Alarm.created_at.desc()).all()
         return {"status": "success", "data": all_alarms}
@@ -111,9 +119,12 @@ def get_all_alarms(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Gagal memuat data alarm: {str(e)}")
 
 
-# 4. GET recent alarms
 @router.get("/recent")
-def get_recent_alarms(limit: int = 50, db: Session = Depends(get_db)):
+def get_recent_alarms(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         recent_alarms = db.query(Alarm).order_by(Alarm.created_at.desc()).limit(limit).all()
         return {"status": "success", "data": recent_alarms}
@@ -121,9 +132,12 @@ def get_recent_alarms(limit: int = 50, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Gagal memuat log alarm dari database: {str(e)}")
 
 
-# 5. GET history alarm — HARUS sebelum /{alarm_id} agar tidak konflik route
 @router.get("/history")
-def get_alarm_history(limit: int = 500, db: Session = Depends(get_db)):
+def get_alarm_history(
+    limit: int = 500,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         history = (
             db.query(AlarmHistory)
@@ -136,9 +150,12 @@ def get_alarm_history(limit: int = 500, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Gagal memuat history alarm: {str(e)}")
 
 
-# 6. DELETE
 @router.delete("/{alarm_id}")
-def delete_master_alarm(alarm_id: int, db: Session = Depends(get_db)):
+def delete_master_alarm(
+    alarm_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "rasindo_operator")),
+):
     try:
         db_alarm = db.query(Alarm).filter(Alarm.id == alarm_id).first()
         if not db_alarm:

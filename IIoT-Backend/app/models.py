@@ -97,20 +97,9 @@ class Alarm(Base):
         UniqueConstraint('gateway_id', 'mqtt_key', name='unique_gateway_mqtt_key'),
     )
 
-# ==========================================
-# 7. TABEL SESSIONS (PELACAK LOGIN USER)
-# ==========================================
-class UserSession(Base):
-    __tablename__ = "sessions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    session_token = Column(TEXT, unique=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-
 
 # ==========================================
-# 8. TABEL TOKEN RESET PASSWORD
+# 7. TABEL TOKEN RESET PASSWORD
 # ==========================================
 class PasswordReset(Base):
     __tablename__ = "password_resets"
@@ -122,7 +111,7 @@ class PasswordReset(Base):
     is_used = Column(Boolean, default=False)
     
 # ==========================================
-# 9. TABEL Alarm History (REKAM JEJAK ALARM YANG SUDAH TRIGGERED)
+# 8. TABEL Alarm History (REKAM JEJAK ALARM YANG SUDAH TRIGGERED)
 # ==========================================
 class AlarmHistory(Base):
     __tablename__ = "alarm_history"
