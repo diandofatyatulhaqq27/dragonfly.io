@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import myLogo from '@/assets/logodragonfly2.png';
-import NetworkBackground from '@/components/Networkbackground2';
+import NetworkBackground from '@/components/NetworkBackground2';
 
 export default function LoginPage() {
   const router = useRouter();
