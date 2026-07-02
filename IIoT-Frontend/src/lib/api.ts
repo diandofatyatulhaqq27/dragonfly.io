@@ -27,13 +27,13 @@ export function getLocalToken(): string {
 }
 
 export function getAuthHeaders(): Record<string, string> {
-  const user = getLocalUser();
   const token = getLocalToken();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-User-Id": String(user?.id ?? ""),
   };
+  // 🌟 X-User-Id dihapus total — itu jalur bypass auth kedua.
+  // Backend sekarang HANYA percaya JWT bertanda tangan lewat Authorization header.
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   return headers;
