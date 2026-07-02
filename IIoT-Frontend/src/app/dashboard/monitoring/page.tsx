@@ -149,24 +149,12 @@ export default function MonitoringPage() {
   const userCompanyId = String(loggedInUser?.company_id ?? "");
   const isCompanyScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole);
 
-  // NOTE: useProjects() scopes internally based on role === "admin" only,
-  // which is narrower than isCompanyScoped here (which also treats
-  // rasindo_operator/rasindo_user as unscoped). That mismatch already
-  // existed in the hook as provided — for rasindo_operator/rasindo_user
-  // this page will fetch unscoped gateways but company-scoped projects.
-  // Flagging it here; align useProjects()'s scoping check if that's
-  // not intended.
   const gatewaysQuery = useGateways(
     isCompanyScoped ? userCompanyId : undefined,
     { refetchInterval: POLL_INTERVAL }
   );
   const projectsQuery = useProjects({ refetchInterval: POLL_INTERVAL });
   const companiesQuery = useCompanies({ refetchInterval: POLL_INTERVAL });
-  // NOTE: useAllAlarms/useAlarmHistory don't accept a company/scope filter,
-  // so they always return data for every company. We scope them client-side
-  // below against `gateways`, which is already correctly company-scoped.
-  // If/when the backend supports a company filter for these two endpoints,
-  // prefer passing it here instead so unscoped data never reaches the client.
   const alarmsQuery = useAllAlarms({ refetchInterval: POLL_INTERVAL });
   const alarmHistoryQuery = useAlarmHistory({ refetchInterval: POLL_INTERVAL });
 
@@ -174,10 +162,6 @@ export default function MonitoringPage() {
   const projects = projectsQuery.data ?? [];
   const companies = companiesQuery.data ?? [];
 
-  // Scope alarms & alarm history to gateways the current user can actually
-  // see. `gateways` above is already filtered by company (via useGateways),
-  // so we reuse that as the source of truth instead of trusting the raw
-  // alarm endpoints, which return data across all companies.
   const gatewayIdSet = React.useMemo(
     () => new Set(gateways.map((g) => g.gateway_id)),
     [gateways]
@@ -193,9 +177,6 @@ export default function MonitoringPage() {
     [alarmHistoryQuery.data, gatewayIdSet]
   );
 
-  // Only show the full-page skeleton on the very first load of each
-  // query, not on background refetches (mirrors old `loading` behavior,
-  // which was only ever set to false once after first fetch).
   const loading =
     gatewaysQuery.isLoading ||
     projectsQuery.isLoading ||
@@ -237,14 +218,26 @@ export default function MonitoringPage() {
   const companyName = (id: any) =>
     companies.find((c) => c.id === id)?.name ?? `Tenant #${id ?? "—"}`;
 
-  // Memoized so the reference stays stable while the underlying data and
-  // selected period haven't changed. Without this, every 5s poll produced a
-  // brand-new array even when alarm counts were identical, which made the
-  // recharts <Area> replay its enter animation on every tick.
-  const chartData = React.useMemo(
-    () => buildChartData(alarmHistory, chartPeriod),
-    [alarmHistory, chartPeriod]
-  );
+  // Deep-compares the freshly built chart data against the previous result
+  // instead of just memoizing on `alarmHistory`'s reference. React Query
+  // returns a brand-new `alarmHistory` array on every successful poll even
+  // when nothing actually changed, which — if we only reference-compared —
+  // would hand recharts a new array every 5s and make its <Area> replay the
+  // enter animation on every tick (the "glitch"). By keeping the previous
+  // array reference whenever the values are identical, recharts only ever
+  // sees a genuinely new array (and animates) when the numbers actually
+  // change, so the initial draw-in animation still plays normally.
+  const chartDataRef = React.useRef<{ label: string; alarms: number }[]>([]);
+  const chartData = React.useMemo(() => {
+    const next = buildChartData(alarmHistory, chartPeriod);
+    const prev = chartDataRef.current;
+    const isSame =
+      prev.length === next.length &&
+      prev.every((p, i) => p.label === next[i].label && p.alarms === next[i].alarms);
+    if (isSame) return prev;
+    chartDataRef.current = next;
+    return next;
+  }, [alarmHistory, chartPeriod]);
 
   const periodLabel = {
     hourly: "Past 24 hours",
@@ -362,7 +355,9 @@ export default function MonitoringPage() {
                   fill="url(#areaGrad)"
                   dot={false}
                   activeDot={{ r: 4, fill: "#6366f1" }}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={700}
+                  animationEasing="ease-out"
                 />
               </AreaChart>
             </ResponsiveContainer>
