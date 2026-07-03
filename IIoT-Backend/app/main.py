@@ -34,6 +34,8 @@ origins = [
     "http://localhost:3000",
     "https://dragonfly-io.vercel.app",
     "https://dragonfly-fe.vercel.app",
+    "https://dragonfly.io",           # 🌟 domain custom production
+    "https://www.dragonfly.io",       # 🌟 jaga-jaga kalau ada versi www
 ]
 
 app.add_middleware(

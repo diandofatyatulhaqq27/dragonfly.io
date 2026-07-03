@@ -1,4 +1,5 @@
 import uuid
+import os
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -125,19 +126,19 @@ def generate_reset_token(
     try:
         db.add(new_reset)
         db.commit()
-        target_link = f"http://localhost:3000/reset-password?token={secure_token}"
+
+        # 🌟 FIX: pakai FRONTEND_URL dari env, konsisten dengan auth.py,
+        # supaya link yang dikirim admin nunjuk ke domain production,
+        # bukan localhost.
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        target_link = f"{frontend_url}/reset-password?token={secure_token}"
+
         return {"status": "success", "reset_link": target_link}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Gagal generate token log: {str(e)}")
-
-# ========================================================
-# 4. POST (USER): Execute reset password — TETAP PUBLIK
-# Sengaja tidak diproteksi Depends(get_current_user), karena user yang
-# lupa password justru TIDAK PUNYA sesi login. Keamanannya ada di
-# validitas & masa berlaku token itu sendiri (15 menit, sekali pakai),
-# bukan di status login. Sama seperti /api/auth/reset-password.
-# ========================================================
+    
+    
 @router.post("/execute-reset-password")
 def execute_reset_password(payload: UserSubmitNewPasswordSchema, db: Session = Depends(get_db)):
     reset_record = db.query(PasswordReset).filter(

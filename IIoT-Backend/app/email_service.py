@@ -1,25 +1,29 @@
 import os
-import httpx
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-# For quick testing you can leave this as Resend's shared test domain — but
-# note that domain only delivers to the email address your Resend account
-# was signed up with. Once you verify your own domain in the Resend
-# dashboard, switch this to something like "Dragonfly.io <noreply@dragonfly.io>".
-RESEND_FROM = os.getenv("RESEND_FROM", "Dragonfly.io <onboarding@resend.dev>")
-
-RESEND_API_URL = "https://api.resend.com/emails"
+conf = ConnectionConfig(
+    MAIL_USERNAME=os.getenv("MAIL_USERNAME", ""),
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", ""),
+    MAIL_FROM=os.getenv("MAIL_FROM", ""),
+    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
+    MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
+    MAIL_FROM_NAME="Dragonfly.io",
+    MAIL_STARTTLS=True,
+    MAIL_SSL_TLS=False,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True,
+)
 
 
 async def send_reset_email(email: str, reset_link: str):
     print("\n" + "=" * 60)
     print(f"=== [EMAIL] Attempting to send to: {email}")
-    print(f"=== [EMAIL] RESEND_FROM: {RESEND_FROM}")
+    print(f"=== [EMAIL] MAIL_FROM: {conf.MAIL_FROM}")
     print(f"=== [EMAIL] Reset link: {reset_link}")
     print("=" * 60)
 
-    if not RESEND_API_KEY:
-        print("=== [EMAIL] ❌ FAILED: RESEND_API_KEY is not set")
+    if not conf.MAIL_USERNAME or not conf.MAIL_PASSWORD:
+        print("=== [EMAIL] ❌ FAILED: MAIL_USERNAME / MAIL_PASSWORD belum di-set")
         return
 
     html = f"""
@@ -45,29 +49,17 @@ async def send_reset_email(email: str, reset_link: str):
     </div>
     """
 
+    message = MessageSchema(
+        subject="Reset your Dragonfly.io password",
+        recipients=[email],
+        body=html,
+        subtype=MessageType.html,
+    )
+
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                RESEND_API_URL,
-                headers={
-                    "Authorization": f"Bearer {RESEND_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": RESEND_FROM,
-                    "to": [email],
-                    "subject": "Reset your Dragonfly.io password",
-                    "html": html,
-                },
-            )
-
-        if resp.status_code in (200, 201):
-            print(f"=== [EMAIL] ✅ Successfully sent to: {email}")
-        else:
-            print(f"=== [EMAIL] ❌ FAILED to send to {email}")
-            print(f"=== [EMAIL] Status code: {resp.status_code}")
-            print(f"=== [EMAIL] Response body: {resp.text}")
-
+        fm = FastMail(conf)
+        await fm.send_message(message)
+        print(f"=== [EMAIL] ✅ Successfully sent to: {email}")
     except Exception as e:
         print(f"=== [EMAIL] ❌ FAILED to send to {email}")
         print(f"=== [EMAIL] Error type: {type(e).__name__}")

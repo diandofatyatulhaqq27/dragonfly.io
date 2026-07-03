@@ -11,5 +11,4 @@ bcrypt==4.1.2
 apscheduler
 fastapi-mail==1.4.1
 pytz
-httpx
 python-jose[cryptography]==3.3.0
