@@ -154,6 +154,13 @@ def update_project(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    role = current_user.get("role")
+    if role not in ["admin", "rasindo_operator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tindakan ditolak! Hanya Administrator & Rasindo Operator."
+        )
+
     project = db.query(Project).filter(Project.project_id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")
@@ -180,6 +187,13 @@ def delete_project(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    role = current_user.get("role")
+    if role not in ["admin", "rasindo_operator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tindakan ditolak! Hanya Administrator & Rasindo Operator."
+        )
+
     project = db.query(Project).filter(Project.project_id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")

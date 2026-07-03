@@ -4,10 +4,26 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.database import get_db
-from app.models import Alarm, AlarmHistory
+from app.models import Alarm, AlarmHistory, Gateway, Project
 from app.routers.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/alarms", tags=["Alarms"])
+
+_GLOBAL_ROLES = ("admin", "rasindo_operator", "rasindo_user")
+
+
+def _assert_alarm_access(gateway_id: int, current_user: dict, db: Session):
+    """
+    🔒 Cegah IDOR lintas tenant: role client hanya boleh akses/ubah alarm
+    yang gateway-nya ada di company mereka sendiri.
+    """
+    role = current_user.get("role")
+    if role in _GLOBAL_ROLES:
+        return
+    gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
+    project = db.query(Project).filter(Project.project_id == gateway.project_id).first() if gateway else None
+    if not project or project.company_id != current_user.get("company_id"):
+        raise HTTPException(status_code=403, detail="Anda tidak memiliki akses ke alarm ini.")
 
 
 class AlarmCreateSchema(BaseModel):
@@ -75,6 +91,12 @@ def update_alarm(
         if not db_alarm:
             raise HTTPException(status_code=404, detail="Alarm tidak ditemukan.")
 
+        # 🔒 Cek akses ke alarm yang ADA SEKARANG dulu, sebelum payload
+        # mengubah gateway_id-nya (payload.gateway_id bisa jadi gateway lain).
+        _assert_alarm_access(db_alarm.gateway_id, current_user, db)
+        if payload.gateway_id != db_alarm.gateway_id:
+            _assert_alarm_access(payload.gateway_id, current_user, db)
+
         db_alarm.gateway_id = payload.gateway_id
         db_alarm.mqtt_key = payload.mqtt_key.strip()
         db_alarm.name = payload.name.strip()
@@ -113,7 +135,16 @@ def get_all_alarms(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        all_alarms = db.query(Alarm).order_by(Alarm.created_at.desc()).all()
+        query = db.query(Alarm)
+        role = current_user.get("role")
+        if role not in _GLOBAL_ROLES:
+            query = (
+                query
+                .join(Gateway, Alarm.gateway_id == Gateway.gateway_id)
+                .join(Project, Gateway.project_id == Project.project_id)
+                .filter(Project.company_id == current_user.get("company_id"))
+            )
+        all_alarms = query.order_by(Alarm.created_at.desc()).all()
         return {"status": "success", "data": all_alarms}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memuat data alarm: {str(e)}")
@@ -126,7 +157,16 @@ def get_recent_alarms(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        recent_alarms = db.query(Alarm).order_by(Alarm.created_at.desc()).limit(limit).all()
+        query = db.query(Alarm)
+        role = current_user.get("role")
+        if role not in _GLOBAL_ROLES:
+            query = (
+                query
+                .join(Gateway, Alarm.gateway_id == Gateway.gateway_id)
+                .join(Project, Gateway.project_id == Project.project_id)
+                .filter(Project.company_id == current_user.get("company_id"))
+            )
+        recent_alarms = query.order_by(Alarm.created_at.desc()).limit(limit).all()
         return {"status": "success", "data": recent_alarms}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memuat log alarm dari database: {str(e)}")
@@ -139,8 +179,17 @@ def get_alarm_history(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        query = db.query(AlarmHistory)
+        role = current_user.get("role")
+        if role not in _GLOBAL_ROLES:
+            query = (
+                query
+                .join(Gateway, AlarmHistory.gateway_id == Gateway.gateway_id)
+                .join(Project, Gateway.project_id == Project.project_id)
+                .filter(Project.company_id == current_user.get("company_id"))
+            )
         history = (
-            db.query(AlarmHistory)
+            query
             .order_by(AlarmHistory.triggered_at.desc())
             .limit(limit)
             .all()

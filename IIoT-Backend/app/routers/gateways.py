@@ -52,6 +52,19 @@ def _validate_keys(key_list: List[str]) -> List[str]:
     return [k for k in key_list if _VALID_KEY_PATTERN.match(k)]
 
 
+def _assert_gateway_access(gateway: Gateway, current_user: dict, db: Session):
+    """
+    🔒 Cegah IDOR lintas tenant: role client (client_operator/client_user)
+    hanya boleh akses gateway yang project-nya ada di company mereka sendiri,
+    walau mereka tahu/nebak gateway_id milik company lain.
+    """
+    role = current_user.get("role")
+    if role in ["client_operator", "client_user"]:
+        project = db.query(Project).filter(Project.project_id == gateway.project_id).first()
+        if not project or project.company_id != current_user.get("company_id"):
+            raise HTTPException(status_code=403, detail="Anda tidak memiliki akses ke gateway ini.")
+
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_gateway(gateway: GatewaySchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
@@ -92,6 +105,7 @@ def get_gateway(gateway_id: int, db: Session = Depends(get_db), current_user: di
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+    _assert_gateway_access(gateway, current_user, db)
 
     logs = (
         db.query(TelemetryLog)
@@ -145,6 +159,7 @@ def get_gateway_chart(
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+    _assert_gateway_access(gateway, current_user, db)
 
     cfg = RANGE_CONFIG.get(range, RANGE_CONFIG["1h"])
 
@@ -211,6 +226,7 @@ def get_gateway_logs(
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+    _assert_gateway_access(gateway, current_user, db)
 
     query = db.query(TelemetryLog).filter(TelemetryLog.gateway_id == gateway_id)
 
@@ -277,6 +293,7 @@ def get_gateway_alarm_logs(
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+    _assert_gateway_access(gateway, current_user, db)
 
     query = db.query(AlarmHistory).filter(AlarmHistory.gateway_id == gateway_id)
 
@@ -337,7 +354,7 @@ def update_gateway(gateway_id: int, payload: GatewaySchema, db: Session = Depend
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
     try:
-        gateway.hmi_code = payload.hmi_code
+        gateway.hmi_code = payload.hmi_code  # noqa: keep existing behavior below
         gateway.name = payload.name
         gateway.project_id = payload.project_id
         gateway.status = payload.status
