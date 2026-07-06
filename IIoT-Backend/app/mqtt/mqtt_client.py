@@ -2,6 +2,7 @@ import os
 import ssl
 import paho.mqtt.client as mqtt
 from app.mqtt.message_handler import MessageHandler
+from app.mqtt.heartbeat_handler import HeartbeatHandler
 
 
 class MQTTClient:
@@ -23,7 +24,7 @@ class MQTTClient:
         if rc == 0:
             print("✅ Backend FastAPI Berhasil Terhubung ke Broker MQTT!")
             client.subscribe("data/#")
-            client.subscribe("iiot/sensor/gas")
+            client.subscribe("heartbeat/#")
         else:
             print(f"❌ Gagal koneksi ke MQTT, error code: {rc}")
 
@@ -31,13 +32,17 @@ class MQTTClient:
         print(f"⚠️ MQTT Terputus (rc={rc}), paho akan auto-reconnect...")
 
     def on_message(self, client, userdata, message):
-        # Retained message diabaikan SEBELUM diproses, bukan setelahnya
         if message.retain:
             print(f"⚠️ Retained message diabaikan: {message.topic}")
             return
 
         try:
             payload_str = message.payload.decode("utf-8", errors="ignore")
+
+            if message.topic.startswith("heartbeat/"):
+                HeartbeatHandler.handle(message.topic, payload_str)
+                return
+
             print(f"📩 Data Masuk via MQTT [{message.topic}]: {payload_str}")
             MessageHandler.handle(message.topic, payload_str)
         except Exception as e:

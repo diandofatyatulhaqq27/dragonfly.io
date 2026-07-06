@@ -72,7 +72,7 @@ export function AssetMap({ isFullScreen, showSearch = false, onSelectLocation }:
     mapRef.current = new maplibregl.Map({
       container: mapContainer.current,
       style: initialStyle,
-      center: [124.0, -2.5],
+      center: [122.0, -2.5],
       zoom: 4.2
     });
 
