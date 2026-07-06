@@ -74,7 +74,17 @@ export default function DataLoggerPage() {
 
   const logs = logsQuery.data?.logs ?? [];
   const pagination = logsQuery.data?.pagination ?? { page: 1, page_size: 25, total_records: 0, total_pages: 0 };
-  const isLoading = logsQuery.isFetching;
+  // ⚠️ FIX: isLoading (true only on the very first fetch, when there's no
+  // cached data yet) — not isFetching (true on EVERY refetch, including
+  // silent background polling). Using isFetching here was blanking the
+  // whole table out to a spinner every time the periodic refetch fired,
+  // then snapping back once fresh data arrived — that height jump is the
+  // "kedip"/flicker you were seeing, most noticeable on alarm_logs simply
+  // because that table tends to have more visible rows/columns at once.
+  const isLoading = logsQuery.isLoading;
+  // Background refetch indicator — used only to spin the refresh icon,
+  // never to swap out the table body.
+  const isRefetching = logsQuery.isFetching && !logsQuery.isLoading;
   const error = logsQuery.error?.message ?? null;
 
   // Mengambil channel dinamis dari objek JSON payload (hanya berlaku di tab gateway_logs)
@@ -282,7 +292,10 @@ export default function DataLoggerPage() {
             disabled={!selectedProject}
             className="p-2.5 bg-slate-50 dark:bg-slate-900/80 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border-none cursor-pointer disabled:opacity-40"
           >
-            <RefreshCcw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${isLoading ? "animate-spin" : ""}`} />
+            {/* Spins on BOTH initial load and background refetch — this is
+                the only visual cue for background polling now, instead of
+                the whole table blanking out. */}
+            <RefreshCcw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${(isLoading || isRefetching) ? "animate-spin" : ""}`} />
           </button>
         </div>
 
