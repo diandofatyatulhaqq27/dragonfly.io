@@ -37,6 +37,8 @@ function Divider() {
   return <div className="w-px h-7 bg-slate-200 dark:bg-slate-700 shrink-0" />;
 }
 
+type ExpandedPanel = "offline" | "alarm" | null;
+
 export default function DashboardPage() {
   const loggedInUser = getLocalUser();
   const userRole = loggedInUser?.role ?? "client_user";
@@ -70,9 +72,12 @@ export default function DashboardPage() {
     )
     .slice(0, 6);
 
+  const recentAlarms = activeAlarms.slice(0, 6);
+
   const isAllClear = offlineGateways === 0 && activeAlarms.length === 0;
 
-  const [offlineExpanded, setOfflineExpanded] = useState(false);
+  const [expanded, setExpanded] = useState<ExpandedPanel>(null);
+  const toggle = (panel: ExpandedPanel) => setExpanded((cur) => (cur === panel ? null : panel));
 
   const statusColor = isAllClear ? "bg-emerald-500" : activeAlarms.length > 0 ? "bg-rose-500" : "bg-amber-500";
 
@@ -116,7 +121,7 @@ export default function DashboardPage() {
                   <>
                     <Divider />
                     <button
-                      onClick={() => setOfflineExpanded((v) => !v)}
+                      onClick={() => toggle("offline")}
                       className="flex items-center gap-1.5 cursor-pointer border-none bg-transparent"
                     >
                       <WifiOff className="w-3.5 h-3.5 text-amber-500" />
@@ -126,7 +131,7 @@ export default function DashboardPage() {
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
                         Offline
                       </span>
-                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${offlineExpanded ? "rotate-180" : ""}`} />
+                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${expanded === "offline" ? "rotate-180" : ""}`} />
                     </button>
                   </>
                 )}
@@ -134,9 +139,9 @@ export default function DashboardPage() {
                 {activeAlarms.length > 0 && (
                   <>
                     <Divider />
-                    <Link
-                      href="/dashboard/alarms"
-                      className="flex items-center gap-1.5 group"
+                    <button
+                      onClick={() => toggle("alarm")}
+                      className="flex items-center gap-1.5 cursor-pointer border-none bg-transparent"
                     >
                       <BellRing className="w-3.5 h-3.5 text-rose-500" />
                       <span className="text-[12px] font-mono font-bold text-rose-600 dark:text-rose-400 tabular-nums">
@@ -145,16 +150,16 @@ export default function DashboardPage() {
                       <span className="text-[9px] font-black uppercase tracking-widest text-rose-400">
                         Alarm{activeAlarms.length !== 1 ? "s" : ""}
                       </span>
-                      <ChevronRight className="w-3 h-3 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
-                    </Link>
+                      <ChevronDown className={`w-3 h-3 text-rose-400 transition-transform ${expanded === "alarm" ? "rotate-180" : ""}`} />
+                    </button>
                   </>
                 )}
               </div>
             </div>
 
             {/* Signature: telemetry pulse line — a live "heartbeat" under the
-                strip, ticking in sync with the 10s polling cadence so it
-                reads as "this data is alive", not decorative chrome. */}
+                strip, ticking continuously so it reads as "this data is
+                alive", not decorative chrome. */}
             <div className="relative h-[2px] w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
               <div
                 className={`absolute inset-y-0 w-1/3 ${
@@ -164,22 +169,59 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* Expandable offline detail — horizontal chip row, only when opened */}
-            {offlineExpanded && recentOffline.length > 0 && (
-              <div className="flex items-center gap-1.5 px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 overflow-x-auto">
-                {recentOffline.map((g: any) => (
-                  <div
-                    key={g.gateway_id}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 shrink-0"
-                  >
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {g.name ?? `Gateway #${g.gateway_id}`}
-                    </span>
-                    <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
-                      {timeAgo(g.last_ping)}
-                    </span>
-                  </div>
-                ))}
+            {/* Expandable OFFLINE detail — chip row + explicit "view all" button */}
+            {expanded === "offline" && offlineGateways > 0 && (
+              <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {recentOffline.map((g: any) => (
+                    <div
+                      key={g.gateway_id}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 shrink-0"
+                    >
+                      <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {g.name ?? `Gateway #${g.gateway_id}`}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                        {timeAgo(g.last_ping)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Link
+                  href="/dashboard/gateways"
+                  className="mt-2 flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-700 transition-colors"
+                >
+                  Lihat Semua Gateway
+                  <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
+
+            {/* Expandable ALARM detail — message list + explicit "view all" button */}
+            {expanded === "alarm" && activeAlarms.length > 0 && (
+              <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex flex-col gap-1">
+                  {recentAlarms.map((a: any, i: number) => (
+                    <div
+                      key={a.id ?? i}
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-rose-50/70 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40"
+                    >
+                      <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 truncate">
+                        {a.message ?? "Alarm aktif"}
+                      </span>
+                      <span className="text-[10px] font-mono text-rose-400 shrink-0">
+                        GW#{a.gateway_id}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Link
+                  href="/dashboard/alarms"
+                  className="mt-2 flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-rose-500 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/50 border border-rose-100 dark:border-rose-900/40 transition-colors"
+                >
+                  Lihat Semua Alarm
+                  <ChevronRight className="w-3 h-3" />
+                </Link>
               </div>
             )}
           </div>
