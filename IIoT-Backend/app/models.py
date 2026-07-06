@@ -1,5 +1,5 @@
 import json
-from sqlalchemy import Column, Integer, String, TEXT, Boolean, DateTime, ForeignKey, Float, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, TEXT, Boolean, DateTime, ForeignKey, Float, Text, UniqueConstraint, BigInteger, Index
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -72,11 +72,16 @@ class Gateway(Base):
 # ==========================================
 class TelemetryLog(Base):
     __tablename__ = "telemetry_logs"
+    __table_args__ = (
+        Index('idx_telemetry_gateway_created', 'gateway_id', 'created_at'),
+        Index('idx_telemetry_payload_gin', 'payload', postgresql_using='gin'),
+        {'postgresql_partition_by': 'RANGE (created_at)'},
+    )
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     payload = Column(JSONB, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    gateway_id = Column(Integer, ForeignKey("gateways.gateway_id", ondelete="CASCADE"), index=True)
+    created_at = Column(DateTime(timezone=True), primary_key=True, server_default=func.now())
+    gateway_id = Column(Integer, ForeignKey("gateways.gateway_id", ondelete="CASCADE"))
 
 
 # ==========================================

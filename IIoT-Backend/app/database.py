@@ -23,7 +23,25 @@ print("\n" + "="*70)
 print(f"=== [DATABASE] Connecting to: {SQLALCHEMY_DATABASE_URL.split('@')[-1]}")
 print("="*70 + "\n")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# 🌟 Connection pool tuning -- penting karena ada 2 sumber beban bersamaan:
+#    1. MQTT ingestion (insert terus-menerus, bisa >1x per detik kalau
+#       puluhan gateway publish bergantian)
+#    2. Dashboard/API request dari banyak user sekaligus
+#
+# pool_size       : jumlah koneksi yang tetap dibuka & siap pakai
+# max_overflow    : koneksi tambahan sementara kalau pool_size penuh
+# pool_pre_ping   : test koneksi sebelum dipakai -- mencegah error
+#                   "connection already closed" kalau Postgres/network
+#                   sempat drop koneksi idle (umum terjadi di VPS)
+# pool_recycle    : paksa buat ulang koneksi tiap 30 menit, jaga-jaga
+#                   ada firewall/load balancer yang motong koneksi idle
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
