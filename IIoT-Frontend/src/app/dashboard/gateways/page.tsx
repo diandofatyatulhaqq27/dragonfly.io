@@ -358,7 +358,7 @@ export default function GatewaysPage() {
                   className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
                   {createGateway.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
-                  Register Link
+                  Register Gateway
                 </button>
               </div>
             </form>

@@ -86,7 +86,7 @@ export default function DashboardPage() {
   const isAllClear = offlineGateways === 0 && activeAlarms.length === 0;
 
   return (
-    <div className="relative flex flex-col items-center h-full min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
+    <div className="relative flex flex-col items-center h-full w-full overflow-hidden bg-gray-50 dark:bg-gray-950 p-6">
       {/* MAP Background */}
       <div className="absolute inset-0 w-full h-full z-0">
         <AssetMap isFullScreen={true} />

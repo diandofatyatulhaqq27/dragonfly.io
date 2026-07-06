@@ -4,18 +4,17 @@ import { API_BASE, getAuthHeaders, getLocalUser } from "@/lib/api";
 /**
  * Fetch the list of projects.
  *
- * Scoping mirrors the exact logic AssetMap used to have inline: only the
- * "admin" role sees ALL projects; every other role is scoped to their own
- * company_id. (Note: this is narrower than the isCompanyScoped convention
- * used on the alarms/monitoring/dashboard pages, where rasindo_operator
- * and rasindo_user also see everything — this hook intentionally keeps
- * AssetMap's original behavior unchanged. Flag if you want them unified.)
+ * Scoping sekarang konsisten dengan convention isCompanyScoped di halaman
+ * alarms/monitoring/dashboard: admin, rasindo_operator, dan rasindo_user
+ * semuanya melihat SEMUA project (mereka staff internal Rasindo, bukan
+ * tenant klien spesifik). Role lain (client_operator, client_user) di-scope
+ * ke company_id mereka sendiri.
  */
 export function useProjects(options?: { refetchInterval?: number }) {
   const loggedInUser = getLocalUser();
   const companyId = String(loggedInUser?.company_id ?? "");
   const userRole = loggedInUser?.role ?? "client_user";
-  const isScoped = userRole !== "admin" && !!companyId;
+  const isScoped = !["admin", "rasindo_operator", "rasindo_user"].includes(userRole) && !!companyId;
 
   return useQuery({
     queryKey: ["projects", isScoped ? companyId : "all"],
@@ -62,8 +61,6 @@ export function useCreateProject() {
       return res.json();
     },
     onSuccess: () => {
-      // Invalidates every ["projects", ...] cache bucket regardless of
-      // which company_id key it was stored under.
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });

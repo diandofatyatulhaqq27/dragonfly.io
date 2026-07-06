@@ -407,7 +407,7 @@ export default function AlarmsPage() {
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
                 <button type="submit" disabled={createAlarm.isPending} className="flex-1 bg-blue-600 text-white font-black py-3 rounded-xl text-[9px] uppercase shadow-lg border-none tracking-[0.2em] cursor-pointer hover:bg-blue-700 disabled:opacity-60">
-                  {createAlarm.isPending ? "Menyimpan..." : "Trigger Alarm"}
+                  {createAlarm.isPending ? "Menyimpan..." : "Register Alarm"}
                 </button>
               </div>
             </form>
