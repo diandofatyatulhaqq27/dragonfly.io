@@ -14,12 +14,26 @@ const DEFAULT_FORM = {
 };
 
 // Helper: classify alarm status into 3 states based on raw MQTT value
+// AND the actual online/offline status of the bound gateway.
 // - "1" / "ACTIVE"  -> alarm is actively triggered (danger)
+// - gateway is not online (heartbeat lost) -> force "offline", regardless
+//   of whatever stale status value is stored on the alarm record itself
 // - "0" / "NORMAL"  -> gateway is sending data, value is normal (online)
 // - anything else (null/undefined/no recent data) -> truly offline, no data received
-function getAlarmState(alarm: any): "active" | "online" | "offline" {
+// FIX: previously this only looked at `alarm.status`, which is just the
+// LAST value ever received for that alarm. If the gateway went offline
+// after sending a "NORMAL" reading, the alarm stayed stuck showing
+// "online" forever because nothing here checked the gateway's real
+// heartbeat-derived status. Now we cross-reference the gateway record.
+function getAlarmState(alarm: any, gateway: any): "active" | "online" | "offline" {
   const status = alarm.status;
   if (status === "ACTIVE" || status === "1" || status === 1) return "active";
+
+  // Kalau gateway-nya nggak ditemukan atau statusnya bukan "online"
+  // (artinya heartbeat sudah berhenti), langsung anggap offline —
+  // walaupun status terakhir yang tersimpan di alarm masih "normal".
+  if (!gateway || gateway.status !== "online") return "offline";
+
   if (status === "0" || status === 0 || status === "NORMAL" || status === "RESOLVED") return "online";
   return "offline";
 }
@@ -124,6 +138,14 @@ export default function AlarmsPage() {
     return rawAlarms.filter((a: any) => scopedGatewayIds.has(a.gateway_id));
   }, [rawAlarms, gatewaysList, isCompanyScoped]);
 
+  // FIX: quick-lookup map so we don't do a linear .find() per row on
+  // every render. Keyed by gateway_id -> gateway object.
+  const gatewaysById = useMemo(() => {
+    const map = new Map<number, any>();
+    gatewaysList.forEach((g: any) => map.set(g.gateway_id, g));
+    return map;
+  }, [gatewaysList]);
+
   const loading = gatewaysQuery.isLoading || alarmsQuery.isLoading;
   const error = gatewaysQuery.error?.message || alarmsQuery.error?.message || null;
   const isRefetching = gatewaysQuery.isFetching || alarmsQuery.isFetching;
@@ -217,7 +239,7 @@ export default function AlarmsPage() {
   };
 
   const getGatewayName = (gatewayId: number) => {
-    const gw = gatewaysList.find((g: any) => g.gateway_id === gatewayId);
+    const gw = gatewaysById.get(gatewayId);
     return gw ? gw.name.toUpperCase() : `GATEWAY ID: ${gatewayId}`;
   };
 
@@ -290,7 +312,12 @@ export default function AlarmsPage() {
                 <tr><td colSpan={columnCount} className="p-16 text-center text-rose-500 dark:text-rose-400 font-bold text-[11px]"><AlertTriangle className="w-4 h-4 mx-auto mb-2" /> {error}</td></tr>
               ) : filteredAlarms.length > 0 ? (
                 filteredAlarms.map((alarm: any, index: number) => {
-                  const alarmState = getAlarmState(alarm);
+                  // FIX: look up the actual gateway record so getAlarmState
+                  // can check its real (heartbeat-derived) online/offline
+                  // status instead of trusting only the alarm's own last
+                  // stored value.
+                  const gateway = gatewaysById.get(alarm.gateway_id);
+                  const alarmState = getAlarmState(alarm, gateway);
                   const isActive = alarmState === "active";
 
                   return (
