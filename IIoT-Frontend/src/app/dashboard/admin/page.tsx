@@ -463,10 +463,11 @@ export default function MasterAdminPage() {
                       onChange={(e) => setEditingItem({...editingItem, role: e.target.value})}
                       className="w-full p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] font-black border-none ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-600 outline-none cursor-pointer"
                     >
-                      <option value="admin" className="dark:bg-slate-800">👑 SUPER ADMIN</option>
-                      <option value="rasindo_operator" className="dark:bg-slate-800">🛠️ RASINDO OPERATOR</option>
-                      <option value="rasindo_user" className="dark:bg-slate-800">👁️ RASINDO USER</option>
-                      <option value="client_user" className="dark:bg-slate-800">🏢 CLIENT USER</option>
+                      <option value="admin" className="dark:bg-slate-800"> SUPER ADMIN</option>
+                      <option value="rasindo_operator" className="dark:bg-slate-800"> RASINDO OPERATOR</option>
+                      <option value="rasindo_user" className="dark:bg-slate-800"> RASINDO USER</option>
+                      <option value="client_operator" className="dark:bg-slate-800"> CLIENT OPERATOR</option>
+                      <option value="client_user" className="dark:bg-slate-800"> CLIENT USER</option>
                     </select>
                   </div>
 
