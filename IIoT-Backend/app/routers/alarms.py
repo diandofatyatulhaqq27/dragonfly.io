@@ -79,6 +79,9 @@ def create_or_update_alarm(
         raise HTTPException(status_code=500, detail=f"Gagal memproses data alarm ke database: {str(e)}")
 
 
+_READ_ONLY_ROLES = ("rasindo_user", "client_user")
+
+
 @router.put("/{alarm_id}")
 def update_alarm(
     alarm_id: int,
@@ -86,6 +89,10 @@ def update_alarm(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # 🔒 rasindo_user & client_user bersifat read-only: tidak boleh
+    # resolve/edit alarm, hanya boleh melihat.
+    if current_user.get("role") in _READ_ONLY_ROLES:
+        raise HTTPException(status_code=403, detail="Role Anda bersifat read-only.")
     try:
         db_alarm = db.query(Alarm).filter(Alarm.id == alarm_id).first()
         if not db_alarm:

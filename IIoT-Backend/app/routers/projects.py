@@ -155,7 +155,10 @@ def update_project(
     current_user: dict = Depends(get_current_user)
 ):
     role = current_user.get("role")
-    if role not in ["admin", "rasindo_operator"]:
+    # 🔧 client_operator boleh edit project yang ter-bind ke company mereka
+    # sendiri; client_user tetap read-only, dan tidak boleh pindahkan
+    # project ke company lain (company_id dikunci ke company mereka).
+    if role not in ["admin", "rasindo_operator", "client_operator"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tindakan ditolak! Hanya Administrator & Rasindo Operator."
@@ -164,7 +167,12 @@ def update_project(
     project = db.query(Project).filter(Project.project_id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")
-    
+
+    if role == "client_operator":
+        user_company_id = current_user.get("company_id")
+        if project.company_id != user_company_id or payload.company_id != user_company_id:
+            raise HTTPException(status_code=403, detail="Akses ilegal!")
+
     try:
         project.display_name = payload.display_name
         project.description = payload.description
