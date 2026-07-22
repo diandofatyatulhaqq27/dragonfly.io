@@ -348,15 +348,14 @@ def get_gateway_alarm_logs(
 @router.put("/{gateway_id}")
 def update_gateway(gateway_id: int, payload: GatewaySchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
-    # 🔧 client_operator boleh edit (mis. konfigurasi widget) gateway yang
-    # ter-bind ke company mereka sendiri; client_user tetap read-only.
-    if role not in ["admin", "rasindo_operator", "client_operator"]:
+    # 🔒 client_operator TIDAK boleh edit gateway/project config — role ini
+    # hanya berhak acknowledge/resolve alarm (lihat alarms.py). Edit gateway
+    # tetap eksklusif admin & rasindo_operator (internal Rasindo).
+    if role not in ["admin", "rasindo_operator"]:
         raise HTTPException(status_code=403, detail="Akses ditolak!")
     gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
     if not gateway:
         raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
-    if role == "client_operator":
-        _assert_gateway_access(gateway, current_user, db)
     try:
         gateway.hmi_code = payload.hmi_code  # noqa: keep existing behavior below
         gateway.name = payload.name

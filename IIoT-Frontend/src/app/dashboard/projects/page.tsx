@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Eye, Edit2, X, Loader2, Trash2, RefreshCcw, Building2, MapPin, AlertTriangle, Plus, Search, Check, ChevronDown, ChevronUp } from "lucide-react";
 import * as Select from "@radix-ui/react-select";
 import { AssetMap } from "@/components/maps/AssetMap";
-import { getLocalUser, isReadOnlyRole } from "@/lib/api";
+import { getLocalUser, canManageAssets } from "@/lib/api";
 
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from "@/hooks/useProjects";
 import { useCompanies } from "@/hooks/useCompanies";
@@ -107,7 +107,10 @@ export default function ProjectsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
+  // 🔒 Halaman ini soal konfigurasi Project, bukan alarm — jadi pakai
+  // canManageAssets (admin/rasindo_operator saja), client_operator tetap
+  // diperlakukan read-only di sini walau dia boleh acknowledge alarm.
+  const isReadOnly = !canManageAssets(getLocalUser()?.role);
 
   // Default the create-form's company_id to the first company once the
   // companies list loads — mirrors the old fetchCompaniesList behavior.

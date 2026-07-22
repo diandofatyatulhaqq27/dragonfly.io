@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown, ChevronUp, } from "lucide-react";
 import * as Select from "@radix-ui/react-select";
-import { getLocalUser, isReadOnlyRole } from "@/lib/api";
+import { getLocalUser, canManageAssets } from "@/lib/api";
 
 import { useGateways, useCreateGateway, useUpdateGateway, useDeleteGateway } from "@/hooks/useGateways";
 import { useProjects } from "@/hooks/useProjects";
@@ -114,7 +114,10 @@ export default function GatewaysPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newGatewayForm, setNewGatewayForm] = useState({ ...DEFAULT_FORM });
 
-  const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
+  // 🔒 Halaman ini soal konfigurasi Gateway, bukan alarm — jadi pakai
+  // canManageAssets (admin/rasindo_operator saja), client_operator tetap
+  // diperlakukan read-only di sini walau dia boleh acknowledge alarm.
+  const isReadOnly = !canManageAssets(getLocalUser()?.role);
 
   // Default the create-form's project_id to the first project once the
   // projects list loads — mirrors the old fetchMasterData behavior.

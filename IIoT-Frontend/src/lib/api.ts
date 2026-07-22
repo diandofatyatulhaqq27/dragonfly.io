@@ -47,3 +47,8 @@ export function isReadOnlyRole(role?: string): boolean {
   const r = role ?? getUserRole();
   return r === "rasindo_user" || r === "client_user";
 }
+
+export function canManageAssets(role?: string): boolean {
+  const r = role ?? getUserRole();
+  return r === "admin" || r === "rasindo_operator";
+}
