@@ -13,3 +13,4 @@ fastapi-mail==1.4.1
 pytz
 python-jose[cryptography]==3.3.0
 python-dateutil
+python-multipart

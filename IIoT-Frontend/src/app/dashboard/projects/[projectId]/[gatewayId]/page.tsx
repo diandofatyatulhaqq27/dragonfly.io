@@ -8,7 +8,7 @@ import {
 import ReactGridLayout, {WidthProvider} from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 
-import { getLocalUser, canManageAssets } from "@/lib/api";
+import { getLocalUser, canManageAssets, resolveAssetUrl } from "@/lib/api";
 import { WidgetItem, getLatestPayload, defaultGridPos } from "@/lib/widget-config";
 import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard";
 import {
@@ -387,6 +387,34 @@ export default function GatewayDetailPage() {
             )}
           </div>
         </div>
+
+        {/* ── FOTO CHILLER & HMI (read-only — upload lewat modal Edit di halaman List) ── */}
+        {(gatewayInfo?.chiller_image_url || gatewayInfo?.hmi_image_url) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {gatewayInfo?.chiller_image_url && (
+              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+                <p className="px-4 pt-3 text-[9px] font-black uppercase tracking-widest text-slate-400">Foto Chiller</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveAssetUrl(gatewayInfo.chiller_image_url) ?? undefined}
+                  alt="Foto Chiller"
+                  className="w-full max-h-72 object-contain p-3"
+                />
+              </div>
+            )}
+            {gatewayInfo?.hmi_image_url && (
+              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+                <p className="px-4 pt-3 text-[9px] font-black uppercase tracking-widest text-slate-400">Foto HMI</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveAssetUrl(gatewayInfo.hmi_image_url) ?? undefined}
+                  alt="Foto HMI"
+                  className="w-full max-h-72 object-contain p-3"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── GRID ─────────────────────────────────────────────────────────── */}
         <div>

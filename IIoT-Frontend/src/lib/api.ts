@@ -2,7 +2,18 @@
 // Satu sumber kebenaran untuk API base URL & helper auth.
 // Semua page.tsx tinggal import dari sini, tidak perlu define ulang.
 
-export const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api`;
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = `${RAW_API_URL}/api`;
+// Base buat asset statis (foto gateway dll) yang di-serve dari /uploads,
+// BUKAN /api — jadi tidak boleh pakai API_BASE.
+export const ASSET_BASE = RAW_API_URL;
+
+/** Ubah path relatif ("/uploads/gateways/xxx.jpg") jadi URL absolut ke backend. */
+export function resolveAssetUrl(path?: string | null): string | null {
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${ASSET_BASE}${path}`;
+}
 
 export interface LocalUser {
   id: number;
@@ -36,6 +47,16 @@ export function getAuthHeaders(): Record<string, string> {
   // Backend sekarang HANYA percaya JWT bertanda tangan lewat Authorization header.
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
+  return headers;
+}
+
+/** Auth headers TANPA Content-Type — dipakai buat FormData/file upload,
+ *  soalnya browser wajib set Content-Type multipart/form-data + boundary
+ *  sendiri. Kalau kita set manual di sini, boundary-nya hilang & request gagal. */
+export function getAuthHeadersMultipart(): Record<string, string> {
+  const token = getLocalToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
 

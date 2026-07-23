@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm import Session
@@ -8,6 +8,8 @@ from app.models import Gateway, Project, TelemetryLog
 from app.routers.auth import get_current_user
 from typing import Optional, List, Any
 import re
+import os
+import uuid
 import pytz
 from datetime import datetime
 
@@ -45,6 +47,25 @@ RANGE_CONFIG = {
 # Whitelist key MQTT — hanya huruf, angka, underscore. Mencegah SQL injection
 # lewat parameter `keys` walau sudah pakai bound parameter untuk value lain.
 _VALID_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
+
+# ─── Upload foto Gateway (Chiller / HMI) ───────────────────────────────────
+# Disimpan di disk (bukan DB) supaya query gateway tetap ringan. Path fisiknya
+# dipetakan ke Docker volume terpisah lewat docker-compose.yml, jadi file
+# tidak ikut hilang saat container di-rebuild/redeploy.
+UPLOADS_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "uploads", "gateways",
+)
+os.makedirs(UPLOADS_ROOT, exist_ok=True)
+
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
+VALID_IMAGE_SLOTS = {"chiller", "hmi"}
 
 
 def _validate_keys(key_list: List[str]) -> List[str]:
@@ -126,6 +147,8 @@ def get_gateway(gateway_id: int, db: Session = Depends(get_db), current_user: di
             "last_ping": gateway.last_ping,
             "project_id": gateway.project_id,
             "config": gateway.config if gateway.config is not None else [],
+            "chiller_image_url": gateway.chiller_image_url,
+            "hmi_image_url": gateway.hmi_image_url,
             "logs": [
                 {
                     "id": l.id,
@@ -367,6 +390,113 @@ def update_gateway(gateway_id: int, payload: GatewaySchema, db: Session = Depend
         
         db.commit()
         return {"status": "success", "message": "Gateway berhasil diperbarui"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{gateway_id}/image/{slot}")
+async def upload_gateway_image(
+    gateway_id: int,
+    slot: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Upload foto Chiller atau HMI untuk sebuah gateway.
+    `slot` cuma boleh "chiller" atau "hmi" — dipetakan ke kolom
+    chiller_image_url / hmi_image_url di tabel gateways.
+    """
+    role = current_user.get("role")
+    if role not in ["admin", "rasindo_operator"]:
+        raise HTTPException(status_code=403, detail="Akses ditolak!")
+
+    if slot not in VALID_IMAGE_SLOTS:
+        raise HTTPException(status_code=400, detail="Slot gambar tidak valid. Gunakan 'chiller' atau 'hmi'.")
+
+    gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
+    if not gateway:
+        raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+
+    ext = ALLOWED_IMAGE_TYPES.get(file.content_type)
+    if not ext:
+        raise HTTPException(status_code=400, detail="Format gambar tidak didukung. Gunakan JPG, PNG, atau WEBP.")
+
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Ukuran gambar maksimal 5MB.")
+
+    url_column = "chiller_image_url" if slot == "chiller" else "hmi_image_url"
+    old_url = getattr(gateway, url_column)
+
+    filename = f"gw{gateway_id}_{slot}_{uuid.uuid4().hex[:8]}{ext}"
+    filepath = os.path.join(UPLOADS_ROOT, filename)
+
+    try:
+        with open(filepath, "wb") as f:
+            f.write(contents)
+
+        new_url = f"/uploads/gateways/{filename}"
+        setattr(gateway, url_column, new_url)
+        db.commit()
+
+        # Hapus file lama SETELAH commit berhasil, biar kalau ada error DB
+        # file lama tidak ikut hilang percuma.
+        if old_url:
+            old_path = os.path.join(UPLOADS_ROOT, os.path.basename(old_url))
+            if os.path.isfile(old_path):
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+
+        return {"status": "success", "data": {"url": new_url}}
+    except Exception as e:
+        db.rollback()
+        # Kalau gagal simpan ke DB, buang file yang sudah kadung ditulis.
+        if os.path.isfile(filepath):
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=f"Gagal upload gambar: {str(e)}")
+
+
+@router.delete("/{gateway_id}/image/{slot}")
+def delete_gateway_image(
+    gateway_id: int,
+    slot: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    role = current_user.get("role")
+    if role not in ["admin", "rasindo_operator"]:
+        raise HTTPException(status_code=403, detail="Akses ditolak!")
+
+    if slot not in VALID_IMAGE_SLOTS:
+        raise HTTPException(status_code=400, detail="Slot gambar tidak valid. Gunakan 'chiller' atau 'hmi'.")
+
+    gateway = db.query(Gateway).filter(Gateway.gateway_id == gateway_id).first()
+    if not gateway:
+        raise HTTPException(status_code=404, detail="Gateway tidak ditemukan")
+
+    url_column = "chiller_image_url" if slot == "chiller" else "hmi_image_url"
+    old_url = getattr(gateway, url_column)
+
+    try:
+        setattr(gateway, url_column, None)
+        db.commit()
+
+        if old_url:
+            old_path = os.path.join(UPLOADS_ROOT, os.path.basename(old_url))
+            if os.path.isfile(old_path):
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+
+        return {"status": "success", "message": "Gambar berhasil dihapus"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

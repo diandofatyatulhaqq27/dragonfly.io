@@ -66,6 +66,8 @@ class Gateway(Base):
     project_id = Column(Integer, ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=True)
     project = relationship("Project", back_populates="gateways")
     config = Column(JSONB, default=[])
+    chiller_image_url = Column(String, nullable=True)
+    hmi_image_url = Column(String, nullable=True)
 
 # ==========================================
 # 5. TABEL TELEMETRY LOGS (DATA SENSOR GAS)

@@ -1,11 +1,11 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown, ChevronUp, } from "lucide-react";
+import { Edit2, X, Loader2, Trash2, RefreshCcw, AlertTriangle, Plus, HardDrive, Search, Eye, FolderKanban, Check, ChevronDown, ChevronUp, ImageIcon, Upload, } from "lucide-react";
 import * as Select from "@radix-ui/react-select";
-import { getLocalUser, canManageAssets } from "@/lib/api";
+import { getLocalUser, canManageAssets, resolveAssetUrl } from "@/lib/api";
 
-import { useGateways, useCreateGateway, useUpdateGateway, useDeleteGateway } from "@/hooks/useGateways";
+import { useGateways, useCreateGateway, useUpdateGateway, useDeleteGateway, useUploadGatewayImage, useDeleteGatewayImage } from "@/hooks/useGateways";
 import { useProjects } from "@/hooks/useProjects";
 
 const DEFAULT_FORM = {
@@ -74,6 +74,76 @@ function ProjectSelect({
   );
 }
 
+// ─── Reusable image upload slot (edit modal only — gateway needs an ID) ────
+function ImageSlotUploader({
+  label,
+  imageUrl,
+  onUpload,
+  onDelete,
+  isUploading,
+  isDeleting,
+}: {
+  label: string;
+  imageUrl?: string | null;
+  onUpload: (file: File) => void;
+  onDelete: () => void;
+  isUploading: boolean;
+  isDeleting: boolean;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const resolvedUrl = resolveAssetUrl(imageUrl);
+  const busy = isUploading || isDeleting;
+
+  return (
+    <div className="space-y-1">
+      <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 ml-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <div className="w-14 h-14 shrink-0 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900/60 ring-1 ring-slate-100 dark:ring-slate-700/50 flex items-center justify-center">
+          {resolvedUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={resolvedUrl} alt={label} className="w-full h-full object-cover" />
+          ) : (
+            <ImageIcon className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+          )}
+        </div>
+        <div className="flex-1 flex gap-1.5">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-1 py-2.5 bg-slate-50 dark:bg-slate-900/60 ring-1 ring-slate-100 dark:ring-slate-700/50 text-slate-500 dark:text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+            {resolvedUrl ? "Ganti" : "Upload"}
+          </button>
+          {resolvedUrl && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDelete}
+              className="p-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl border-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Hapus gambar"
+            >
+              {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onUpload(file);
+            e.target.value = "";
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function GatewaysPage() {
   const router = useRouter();
 
@@ -98,6 +168,10 @@ export default function GatewaysPage() {
   const createGateway = useCreateGateway();
   const updateGateway = useUpdateGateway();
   const deleteGateway = useDeleteGateway();
+  const uploadGatewayImage = useUploadGatewayImage();
+  const deleteGatewayImage = useDeleteGatewayImage();
+  const [uploadingSlot, setUploadingSlot] = useState<"chiller" | "hmi" | null>(null);
+  const [deletingSlot, setDeletingSlot] = useState<"chiller" | "hmi" | null>(null);
 
   const projectsList = projectsQuery.data ?? [];
 
@@ -176,6 +250,36 @@ export default function GatewaysPage() {
       setEditingGateway(null);
     } catch {
       alert("Gagal memperbarui hardware.");
+    }
+  };
+
+  // ─── IMAGE UPLOAD/DELETE (edit modal only) ─────────────────────────────
+  const handleImageUpload = async (slot: "chiller" | "hmi", file: File) => {
+    if (!editingGateway?.gateway_id) return;
+    setUploadingSlot(slot);
+    try {
+      const result = await uploadGatewayImage.mutateAsync({ id: editingGateway.gateway_id, slot, file });
+      const urlField = slot === "chiller" ? "chiller_image_url" : "hmi_image_url";
+      setEditingGateway((prev: any) => ({ ...prev, [urlField]: result?.data?.url ?? prev[urlField] }));
+    } catch (err: any) {
+      alert(err.message ?? "Gagal upload gambar.");
+    } finally {
+      setUploadingSlot(null);
+    }
+  };
+
+  const handleImageDelete = async (slot: "chiller" | "hmi") => {
+    if (!editingGateway?.gateway_id) return;
+    if (!confirm("Hapus gambar ini?")) return;
+    setDeletingSlot(slot);
+    try {
+      await deleteGatewayImage.mutateAsync({ id: editingGateway.gateway_id, slot });
+      const urlField = slot === "chiller" ? "chiller_image_url" : "hmi_image_url";
+      setEditingGateway((prev: any) => ({ ...prev, [urlField]: null }));
+    } catch (err: any) {
+      alert(err.message ?? "Gagal menghapus gambar.");
+    } finally {
+      setDeletingSlot(null);
     }
   };
 
@@ -399,6 +503,22 @@ export default function GatewaysPage() {
                   placeholder="Pilih project..."
                 />
               </div>
+              <ImageSlotUploader
+                label="Foto Chiller"
+                imageUrl={editingGateway.chiller_image_url}
+                isUploading={uploadingSlot === "chiller"}
+                isDeleting={deletingSlot === "chiller"}
+                onUpload={(file) => handleImageUpload("chiller", file)}
+                onDelete={() => handleImageDelete("chiller")}
+              />
+              <ImageSlotUploader
+                label="Foto HMI"
+                imageUrl={editingGateway.hmi_image_url}
+                isUploading={uploadingSlot === "hmi"}
+                isDeleting={deletingSlot === "hmi"}
+                onUpload={(file) => handleImageUpload("hmi", file)}
+                onDelete={() => handleImageDelete("hmi")}
+              />
               <div className="pt-3 flex gap-2">
                 <button type="button" onClick={() => setEditingGateway(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest border-none cursor-pointer">Batal</button>
                 <button

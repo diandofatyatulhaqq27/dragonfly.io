@@ -44,6 +44,8 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    volumes:
+      - gateway_uploads:/code/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -63,3 +65,4 @@ volumes:
   postgres_data:
   mqtt_data:
   mqtt_log:
+  gateway_uploads:

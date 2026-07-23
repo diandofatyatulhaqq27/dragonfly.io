@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getAuthHeadersMultipart } from "@/lib/api";
 
 /**
  * Fetch the list of gateways, optionally scoped to a single company.
@@ -100,6 +100,54 @@ export function useDeleteGateway() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gateways"] });
+    },
+  });
+}
+
+/** slot: "chiller" | "hmi" */
+export function useUploadGatewayImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, slot, file }: { id: number; slot: "chiller" | "hmi"; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${API_BASE}/gateways/${id}/image/${slot}`, {
+        method: "POST",
+        headers: getAuthHeadersMultipart(),
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.detail ?? "Gagal upload gambar.");
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gateways"] });
+      queryClient.invalidateQueries({ queryKey: ["gateway"] });
+    },
+  });
+}
+
+export function useDeleteGatewayImage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, slot }: { id: number; slot: "chiller" | "hmi" }) => {
+      const res = await fetch(`${API_BASE}/gateways/${id}/image/${slot}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) throw new Error("Gagal menghapus gambar.");
+
+      return res.json().catch(() => ({}));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gateways"] });
+      queryClient.invalidateQueries({ queryKey: ["gateway"] });
     },
   });
 }
