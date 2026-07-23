@@ -5,7 +5,7 @@ import { LayoutGrid, Loader2, Pencil, X, Check, Plus } from "lucide-react";
 import ReactGridLayout, {WidthProvider} from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 
-import { getLocalUser, isReadOnlyRole } from "@/lib/api";
+import { getLocalUser, canManageAssets } from "@/lib/api";
 import { WidgetItem, getLatestPayload, defaultGridPos } from "@/lib/widget-config";
 import { WidgetCard, WidgetSettingsPanel } from "@/components/widgets/WidgetCard";
 import {
@@ -82,7 +82,10 @@ export default function SingleGatewayPage() {
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  const isReadOnly = isReadOnlyRole(getLocalUser()?.role);
+  // 🔒 "Simpan" di sini manggil PUT /gateways/{id}, yang backend-nya cuma
+  // izinin admin/rasindo_operator. client_operator harus tetap read-only
+  // di layout widget ini walau dia boleh acknowledge alarm di halaman lain.
+  const isReadOnly = !canManageAssets(getLocalUser()?.role);
 
   // ── Server state (React Query) ────────────────────────────────────────────
   const { data: gatewayInfo, isLoading: gatewayLoading } = useGatewayDetail(gatewayId, {

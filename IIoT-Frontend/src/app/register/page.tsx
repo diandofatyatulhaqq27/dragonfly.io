@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from 'react';
-import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Clock } from "lucide-react";
+import { Loader2, AlertCircle, ShieldCheck, ArrowLeft, Clock, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import myLogo from '@/assets/logodragonfly2.png';
@@ -10,6 +10,11 @@ export default function RegisterPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // 👁️ Toggle show/hide, dikontrol sendiri lewat React state — bukan
+  // ngandelin ikon reveal-password bawaan browser (misal punya Edge), yang
+  // suka gak konsisten muncul/ilangnya karena itu di luar kendali kode kita.
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -180,27 +185,51 @@ export default function RegisterPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-gray-700">Password</label>
-                <input
-                  required
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  placeholder="••••••••"
-                  onChange={handleChange}
-                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
+                <div className="relative">
+                  <input
+                    required
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    placeholder="••••••••"
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    className="w-full px-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 border-none bg-transparent cursor-pointer p-0.5"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-gray-700">Confirm</label>
-                <input
-                  required
-                  name="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  placeholder="••••••••"
-                  onChange={handleChange}
-                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
+                <div className="relative">
+                  <input
+                    required
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={formData.confirmPassword}
+                    placeholder="••••••••"
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    className="w-full px-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 border-none bg-transparent cursor-pointer p-0.5"
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             </div>
 
