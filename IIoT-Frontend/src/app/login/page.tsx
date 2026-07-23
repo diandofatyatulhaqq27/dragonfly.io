@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Mail, Lock } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // 👁️ Toggle sendiri lewat React state (bukan ikon bawaan browser) —
+  // jadi kondisinya kepegang terus walau fokus pindah ke field lain (email,
+  // dsb), gak ke-reset kayak ikon native yang suka ilang-ilangan.
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,12 +129,21 @@ export default function LoginPage() {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 required
-                type="password"
-                className="w-full p-4 pl-12 bg-slate-50 border-none rounded-2xl text-sm outline-none focus:ring-2 ring-blue-100 text-slate-800 font-sans"
+                type={showPassword ? "text" : "password"}
+                className="w-full p-4 pl-12 pr-12 bg-slate-50 border-none rounded-2xl text-sm outline-none focus:ring-2 ring-blue-100 text-slate-800 font-sans [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 border-none bg-transparent cursor-pointer p-0.5"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
 
             {/* LINK FORGOT PASSWORD */}
